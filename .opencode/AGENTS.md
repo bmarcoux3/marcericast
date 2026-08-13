@@ -8,7 +8,7 @@ Deterministic personal cashflow simulation engine with a FastAPI dashboard. YAML
 - Tests: `uv run pytest tests/` (272 pass). One test: `uv run pytest tests/test_api_integration.py::TestDataQuality::test_summary_fields`
 - Dashboard: `uv run uvicorn api:app --host 0.0.0.0 --port 8000` (serves API + `static/` frontend)
 - CLI run (writes `artifacts/<name>-output.csv`): `uv run python main.py <scenario>`
-- JS toolchain is `bun` (not npm) — `bun install`, `bunx playwright test` (see e2e below). The frontend has no build step; syntax check: `node --check static/app.js`
+- JS toolchain is `bun` (not npm) — `bun install`, `bunx playwright test` (see e2e below). The frontend has no build step; syntax check: `node --check static/app.js`. `bun` is installed system-wide (1.3.14); if a fresh bun install doesn't resolve, reload the shell/PATH first.
 - No linter/typecheck configured.
 - `.venv` is uv-managed (Python 3.10.12; `.python-version` and `pyproject.toml` require >=3.10 — don't drift above it)
 
