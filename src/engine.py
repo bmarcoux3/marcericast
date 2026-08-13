@@ -99,7 +99,7 @@ class SimulationRunner:
             debts={},
         )
 
-    def _add_uncovered_deficit_as_debt(self, remaining_deficit: float, state: SimulationState, current_year: int) -> None:
+    def _add_uncovered_deficit_as_debt(self, remaining_deficit: float, state: SimulationState) -> None:
         """
         Add any remaining uncovered deficit as a new debt liability.
         This represents borrowing (e.g., credit card debt, personal loan) to cover expenses.
@@ -164,7 +164,6 @@ class SimulationRunner:
                 "tax": "Housing",
                 "insurance": "Insurance",
                 "maintenance": "Housing",
-                "maintainance": "Housing",  # common typo
                 "HOA": "Housing",
                 "hoa": "Housing",
             }
@@ -338,7 +337,7 @@ class SimulationRunner:
                     abs(net_operating_cash_flow), state.accounts
                 )
                 if remaining_deficit > 0:
-                    self._add_uncovered_deficit_as_debt(remaining_deficit, state, year)
+                    self._add_uncovered_deficit_as_debt(remaining_deficit, state)
 
             # 5b. Rebalance accounts that exceed max_target_balance after waterfall resolution
             self.waterfall_resolver.rebalance_excess(state.accounts)

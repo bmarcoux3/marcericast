@@ -3,11 +3,14 @@ name = "personal-cashflow"
 version = "0.1.0"
 description = "Deterministic personal cash flow, tax, and net worth projection engine driven by declarative YAML scenarios"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
-    "pandas>=3.0.3",
-    "pyyaml>=6.0.3",
+    "pandas>=2.0.0",
+    "pyyaml>=6.0.1",
     "pydantic>=2.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "python-multipart>=0.0.6",
 ]
 
 [dependency-groups]

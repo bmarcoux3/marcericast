@@ -1387,7 +1387,7 @@ events:
     costs:
       tax: 0.019
       insurance: 0.015
-      maintainance: 0.02
+      maintenance: 0.02
       HOA: 0.0048
     purchase_fees:
       closing_costs: 0.03
@@ -1417,7 +1417,7 @@ events:
     costs:
       tax: 0.015
       insurance: 0.01
-      maintainance: 0.01
+      maintenance: 0.01
       HOA: 0.008
     purchase_fees:
       closing_costs: 0.03

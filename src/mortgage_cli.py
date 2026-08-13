@@ -7,7 +7,6 @@ Does not modify core simulation logic - pure analysis sidecar.
 """
 
 import argparse
-import sys
 from src.mortgage_analysis import (
     MortgageParams,
     calculate_affordability,

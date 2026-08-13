@@ -8,7 +8,6 @@ can be used independently or alongside the main simulation.
 
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any
-import math
 
 
 @dataclass

@@ -28,16 +28,6 @@ const PARAM_CATEGORIES = {
     meta: 'Scenario Settings',
 };
 
-// Special parameters that get custom UI controls
-// These override the default type detection based on API parameter metadata.
-// Opt-in life-decision toggles/sliders come from .variable_meta via the API,
-// so only generic overrides live here.
-const SPECIAL_PARAMETERS = {
-    // Mortgage principal is auto-calculated from asset_initial_value - down_payment
-    // We hide it from the UI to avoid confusion
-    'mortgage.principal': { type: 'hidden', label: 'Mortgage Principal (Auto-calculated)', category: 'Asset Information' },
-};
-
 // ============================================================================
 // State Management
 // ============================================================================
@@ -53,6 +43,7 @@ const state = {
     pendingParamChanges: new Map(),
     theme: 'light',
     realDollars: true,
+    runToken: 0,
 };
 
 // ============================================================================
@@ -77,11 +68,6 @@ function formatCurrency(value, decimals = 0) {
     return '$' + formatted;
 }
 
-function formatNumber(value) {
-    if (value === null || value === undefined || isNaN(value)) return '0';
-    return value.toLocaleString();
-}
-
 function debounce(fn, delay) {
     let timeoutId;
     return (...args) => {
@@ -102,29 +88,11 @@ function showToast(message, type = 'info') {
     }, 4000);
 }
 
-function getNestedValue(obj, path) {
-    return path.split('.').reduce((o, k) => (o || {})[k], obj);
-}
-
 function getScenarioYearBounds() {
     const scenario = state.scenarios.find(s => s.name === state.currentScenario);
     const start = scenario ? scenario.start_year : 2026;
     const end = scenario ? scenario.end_year : 2079;
     return { start, end };
-}
-
-function setNestedValue(obj, path, value) {
-    const parts = path.split('.');
-    const last = parts.pop();
-    const target = parts.reduce((o, k) => {
-        if (!(k in o)) o[k] = {};
-        return o[k];
-    }, obj);
-    target[last] = value;
-}
-
-function deepClone(obj) {
-    return JSON.parse(JSON.stringify(obj));
 }
 
 // ============================================================================
@@ -194,12 +162,6 @@ async function exportCsv(scenarioName) {
 function categorizeParameter(param) {
     const path = param.path;
 
-    // Check for special parameters first
-    if (SPECIAL_PARAMETERS[path]) {
-        const special = SPECIAL_PARAMETERS[path];
-        return special.category || PARAM_CATEGORIES[path.split('.')[0]] || 'Other';
-    }
-
     // Hide mortgage.principal from UI (auto-calculated) - match by suffix since path includes event ID
     if (path.endsWith('mortgage.principal')) {
         return 'Other';
@@ -257,16 +219,6 @@ function categorizeParameter(param) {
 function getInputType(param) {
     const path = param.path;
 
-    // Check for special parameters first
-    if (SPECIAL_PARAMETERS[path]) {
-        return SPECIAL_PARAMETERS[path].type;
-    }
-
-    // Hide mortgage.principal from UI (auto-calculated)
-    if (path.endsWith('mortgage.principal')) {
-        return 'hidden';
-    }
-
     // Handle gap_years (list type) - for any parameter that might have it
     if (path.includes('gap_years') && param.parameter_type === 'list') {
         return 'gap_years';
@@ -304,34 +256,32 @@ function createParameterElement(param) {
         ? state.pendingParamChanges.get(param.path)
         : param.current_value;
 
-    // Get special config if exists
-    const specialConfig = SPECIAL_PARAMETERS[param.path];
-
-    // Get label - prefer special config label, then API label (.variable_meta), then description, then path
-    const label = specialConfig?.label ?? param.label ?? param.description ?? param.path;
+    // Get label - prefer API label (.variable_meta), then description, then path
+    const label = param.label ?? param.description ?? param.path;
+    const inputId = param.path.replace(/\./g, '-');
 
     // Base label HTML for most input types
-    const labelHtml = `<label class="param-label" for="${param.path.replace(/\./g, '-')}">${escapeHtml(label)}</label>`;
+    const labelHtml = `<label class="param-label" for="${inputId}">${escapeHtml(label)}</label>`;
 
     if (inputType === 'select') {
         // For growth_rate_ref, provide options from macroeconomics
         const options = ['equities', 'bonds', 'real_estate', 'cash_equivalents'];
         inputHtml = `
             ${labelHtml}
-            <select class="param-select" id="${param.path.replace(/\./g, '-')}" data-path="${param.path}" aria-label="${param.description}">
+            <select class="param-select" id="${inputId}" data-path="${param.path}" aria-label="${escapeHtml(param.description)}">
                 ${options.map(opt => `<option value="${opt}" ${opt === currentValue ? 'selected' : ''}>${opt}</option>`).join('')}
             </select>
         `;
     } else if (inputType === 'checkbox') {
         // Check if this is a dynamic step_adjustments checkbox
         const isStepAdjustment = param.path.includes('step_adjustments.');
-        const label = isStepAdjustment ? param.description : (specialConfig?.label ?? param.description);
+        const checkboxLabel = isStepAdjustment ? param.description : (param.label ?? param.description);
         inputHtml = `
             ${labelHtml}
             <div class="param-checkbox-container">
-                <input type="checkbox" class="param-input" id="${param.path.replace(/\./g, '-')}" data-path="${param.path}"
-                    ${currentValue ? 'checked' : ''} aria-label="${param.description}">
-                <span class="param-checkbox-label">${label}</span>
+                <input type="checkbox" class="param-input" id="${inputId}" data-path="${param.path}"
+                    ${currentValue ? 'checked' : ''} aria-label="${escapeHtml(param.description)}">
+                <span class="param-checkbox-label">${escapeHtml(checkboxLabel)}</span>
             </div>
         `;
     } else if (inputType === 'gap_years') {
@@ -339,8 +289,8 @@ function createParameterElement(param) {
         const gapYearsStr = Array.isArray(currentValue) ? currentValue.join(', ') : currentValue;
         inputHtml = `
             ${labelHtml}
-            <textarea class="param-input param-gap-years" id="${param.path.replace(/\./g, '-')}" data-path="${param.path}"
-                rows="3" aria-label="${param.description}" placeholder="Comma-separated years (e.g., 2027, 2028, 2030)">${gapYearsStr}</textarea>
+            <textarea class="param-input param-gap-years" id="${inputId}" data-path="${param.path}"
+                rows="3" aria-label="${escapeHtml(param.description)}" placeholder="Comma-separated years (e.g., 2027, 2028, 2030)">${escapeHtml(String(gapYearsStr ?? ''))}</textarea>
         `;
     } else if (inputType === 'step_adjustments') {
         // Step adjustments - dictionary editor for year -> value pairs
@@ -352,8 +302,8 @@ function createParameterElement(param) {
         const entries = Object.entries(stepAdjustments);
         const rowsHtml = entries.map(([year, value]) => `
             <div class="step-adjustment-row" data-year="${year}">
-                <input type="number" class="param-input step-adjustment-year" value="${year}" step="1" min="${bounds.start}" max="${bounds.end}" aria-label="Year">
-                <input type="number" class="param-input step-adjustment-value" value="${value}" step="0.01" min="0" aria-label="Adjustment multiplier (e.g., 1.12 for 12% increase)">
+                <input type="number" class="param-input step-adjustment-year" value="${escapeHtml(String(year))}" step="1" min="${bounds.start}" max="${bounds.end}" aria-label="Year">
+                <input type="number" class="param-input step-adjustment-value" value="${escapeHtml(String(value))}" step="0.01" min="0" aria-label="Adjustment multiplier (e.g., 1.12 for 12% increase)">
                 <button type="button" class="btn btn-danger btn-sm step-adjustment-delete" aria-label="Delete">×</button>
             </div>
         `).join('');
@@ -379,22 +329,16 @@ function createParameterElement(param) {
         const step = param.step !== undefined ? `step="${param.step}"` : 'step="any"';
         inputHtml = `
             ${labelHtml}
-            <input type="number" class="param-input" id="${param.path.replace(/\./g, '-')}" data-path="${param.path}"
-                value="${currentValue}" ${min} ${max} ${step}
-                aria-label="${param.description}">
+            <input type="number" class="param-input" id="${inputId}" data-path="${param.path}"
+                value="${escapeHtml(String(currentValue))}" ${min} ${max} ${step}
+                aria-label="${escapeHtml(param.description)}">
         `;
     } else if (inputType === 'text') {
         // Text input for string parameters
         inputHtml = `
             ${labelHtml}
-            <input type="text" class="param-input" id="${param.path.replace(/\./g, '-')}" data-path="${param.path}"
-                value="${currentValue}" aria-label="${param.description}">
-        `;
-    } else if (inputType === 'hidden') {
-        // Hidden input for auto-calculated values (e.g., mortgage.principal)
-        inputHtml = `
-            <input type="hidden" class="param-input" id="${param.path.replace(/\./g, '-')}" data-path="${param.path}"
-                value="${currentValue}" aria-label="${param.description}">
+            <input type="text" class="param-input" id="${inputId}" data-path="${param.path}"
+                value="${escapeHtml(String(currentValue))}" aria-label="${escapeHtml(param.description)}">
         `;
     }
 
@@ -472,8 +416,7 @@ function renderParameters() {
 function attachParameterListeners() {
     // Category toggle
     document.querySelectorAll('.param-category-header').forEach(header => {
-        header.addEventListener('click', (e) => {
-            if (e.target.closest('.param-reset-btn')) return;
+        header.addEventListener('click', () => {
             header.closest('.param-category').classList.toggle('collapsed');
         });
     });
@@ -508,20 +451,6 @@ function attachParameterListeners() {
             const value = e.target.value;
             state.pendingParamChanges.set(path, value);
             markParamModified(path, true);
-        });
-    });
-
-    // Reset buttons
-    document.querySelectorAll('.param-reset-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const path = btn.dataset.path;
-            const param = state.parameters.find(p => p.path === path);
-            if (param) {
-                state.pendingParamChanges.delete(path);
-                updateParamDisplay(path, param.current_value);
-                markParamModified(path, false);
-            }
         });
     });
 
@@ -662,12 +591,8 @@ function markParamModified(path, modified) {
 
     if (modified) {
         item.classList.add('modified');
-        const resetBtn = item.querySelector('.param-reset-btn');
-        if (resetBtn) resetBtn.style.display = 'inline-block';
     } else {
         item.classList.remove('modified');
-        const resetBtn = item.querySelector('.param-reset-btn');
-        if (resetBtn) resetBtn.style.display = 'none';
     }
 }
 
@@ -691,12 +616,10 @@ function applyParameterChanges() {
 
 async function loadScenarios() {
     try {
-        console.log('[Dashboard] Fetching scenarios...');
         state.scenarios = await fetchScenarios();
-        console.log('[Dashboard] Scenarios loaded:', state.scenarios);
         const select = document.getElementById('scenarioSelect');
         select.innerHTML = state.scenarios.map(s =>
-            `<option value="${s.name}">${s.display_name} (${s.start_year}-${s.end_year})</option>`
+            `<option value="${escapeHtml(s.name)}">${escapeHtml(s.display_name)} (${escapeHtml(String(s.start_year))}-${escapeHtml(String(s.end_year))})</option>`
         ).join('');
 
         if (state.scenarios.length > 0) {
@@ -717,7 +640,6 @@ async function loadScenario(scenarioName) {
     state.pendingParamChanges.clear();
 
     // Update UI
-    console.log('[Dashboard] Loading scenario:', scenarioName);
     const badgeEl = document.getElementById('scenarioBadge');
     const startYearEl = document.getElementById('startYear');
     const endYearEl = document.getElementById('endYear');
@@ -729,7 +651,6 @@ async function loadScenario(scenarioName) {
     // Load parameters
     try {
         state.parameters = await fetchParameters(scenarioName);
-        console.log('[Dashboard] Parameters loaded:', state.parameters.length);
 
         // Populate category filter dropdown
         populateCategoryFilter();
@@ -772,6 +693,7 @@ function populateCategoryFilter() {
 async function runSimulationWithCurrentParams() {
     if (!state.currentScenario) return;
 
+    const runToken = ++state.runToken;
     const runBtn = document.getElementById('runSimulationBtn');
     runBtn.disabled = true;
     runBtn.innerHTML = `
@@ -782,6 +704,10 @@ async function runSimulationWithCurrentParams() {
         Running...
     `;
 
+    // A stale result (an earlier run resolving after a newer one) must not
+    // overwrite the state of the latest run.
+    const isCurrent = () => runToken === state.runToken;
+
     try {
         const startYear = parseInt(document.getElementById('startYear').value) || state.scenarios.find(s => s.name === state.currentScenario).start_year;
         const endYear = parseInt(document.getElementById('endYear').value) || state.scenarios.find(s => s.name === state.currentScenario).end_year;
@@ -791,6 +717,7 @@ async function runSimulationWithCurrentParams() {
         if (!result.success) {
             throw new Error(result.error || 'Simulation failed');
         }
+        if (!isCurrent()) return;
 
         state.simulationData = result.data;
         state.simulationColumns = result.columns;
@@ -808,26 +735,25 @@ async function runSimulationWithCurrentParams() {
 
         showToast('Simulation complete', 'success');
     } catch (error) {
+        if (!isCurrent()) return;
         console.error('Simulation error:', error);
         showToast('Simulation failed: ' + error.message, 'error');
     } finally {
-        runBtn.disabled = false;
-        runBtn.innerHTML = `
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-            </svg>
-            Run Simulation
-        `;
+        if (isCurrent()) {
+            runBtn.disabled = false;
+            runBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                Run Simulation
+            `;
+        }
     }
 }
 
 // ============================================================================
 // Chart Rendering
 // ============================================================================
-
-function getChartColors(count) {
-    return CHART_COLORS.slice(0, count);
-}
 
 function createGradient(ctx, color, direction = 'vertical') {
     const gradient = direction === 'vertical'
@@ -846,7 +772,6 @@ function destroyChart(chartName) {
 }
 
 function renderNetWorthChart() {
-    console.log('[Dashboard] renderNetWorthChart called');
     const canvas = document.getElementById('netWorthChart');
     if (!canvas) {
         console.error('[Dashboard] netWorthChart canvas not found');
@@ -873,7 +798,7 @@ function renderNetWorthChart() {
 
     try {
         state.charts.netWorth = new Chart(ctx, {
-            type: chartType === 'area' ? 'line' : 'line',
+            type: 'line',
             data: {
                 labels: years,
                 datasets: [
@@ -980,8 +905,7 @@ function renderIncomeExpenseChart() {
     const data = state.simulationData;
     const years = data.map(d => d.Year);
     const income = data.map(d => d['Gross Taxable Income'] || 0);
-    const expenses = data.map(d => Math.abs(d['Net Cash Flow'] || 0) - (d['Gross Taxable Income'] || 0));
-    // Better: sum all expense tags
+    // Sum all expense tags (negative for expenses)
     const tagColumns = state.simulationColumns.filter(c => c.startsWith('Tag: '));
     const totalExpenses = data.map(d => {
         let sum = 0;
@@ -1292,6 +1216,12 @@ function _distToSegment(px, py, x1, y1, x2, y2) {
 function renderTagParallelCoordinates(canvas) {
     const data = state.simulationData;
     if (!data || data.length === 0) return;
+
+    // Remove listeners from a previous render so re-renders don't leak handlers.
+    if (canvas._parallelCleanup) {
+        canvas._parallelCleanup();
+        canvas._parallelCleanup = null;
+    }
 
     const allTagColumns = state.simulationColumns.filter(c => c.startsWith('Tag: '));
     // Keep only significant tags so near-zero axes don't clutter the plot
@@ -1742,10 +1672,10 @@ function renderDataTable() {
     const thead = table.querySelector('thead');
     const tbody = table.querySelector('tbody');
 
-    // Header
+    // Header. The API already includes the index name ("Year") as the first
+    // column, so no separate Year header/cell is added here.
     thead.innerHTML = `
         <tr>
-            <th>Year</th>
             ${columns.map(col => `<th>${escapeHtml(col)}</th>`).join('')}
         </tr>
     `;
@@ -1754,7 +1684,6 @@ function renderDataTable() {
     const displayData = data; // Show all years
     tbody.innerHTML = displayData.map(row => `
         <tr>
-            <td style="font-weight: 600;">${row.Year}</td>
             ${columns.map(col => {
                 const val = row[col];
                 if (typeof val === 'number') {
@@ -1776,6 +1705,16 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Quote a CSV field and defuse spreadsheet-injection prefixes so exported
+// cells can't be interpreted as formulas by Excel/Sheets.
+function csvCell(value) {
+    let str = String(value ?? '');
+    if (/^[=+\-@]/.test(str)) {
+        str = `'${str}`;
+    }
+    return `"${str.replace(/"/g, '""')}"`;
+}
+
 function filterTable() {
     const searchTerm = document.getElementById('tableSearch').value.toLowerCase();
     const rows = document.querySelectorAll('#dataTable tbody tr');
@@ -1791,10 +1730,10 @@ function downloadTable() {
     const columns = state.simulationColumns;
     if (!data) return;
 
-    const headers = ['Year', ...columns];
-    const rows = data.map(row => [row.Year, ...columns.map(c => row[c] ?? '')]);
+    const headers = columns;
+    const rows = data.map(row => columns.map(c => row[c] ?? ''));
 
-    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+    const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1896,10 +1835,6 @@ function setupEventListeners() {
                 if (state.currentScenario) exportCsv(state.currentScenario);
             }
         }
-        if (e.key === 'Escape') {
-            // Close modal if open
-            document.getElementById('paramModal').classList.remove('open');
-        }
     });
 
     // Window resize - update charts
@@ -1916,29 +1851,23 @@ function setupEventListeners() {
 // ============================================================================
 
 async function init() {
-    console.log('[Dashboard] Initializing...');
     initTheme();
     setupEventListeners();
 
     // Wait for Chart.js to be available
     if (typeof Chart === 'undefined') {
-        console.log('[Dashboard] Waiting for Chart.js...');
         await new Promise(resolve => {
             const checkChart = setInterval(() => {
                 if (typeof Chart !== 'undefined') {
                     clearInterval(checkChart);
-                    console.log('[Dashboard] Chart.js loaded');
                     resolve();
                 }
             }, 50);
         });
-    } else {
-        console.log('[Dashboard] Chart.js already available');
     }
 
     try {
         await loadScenarios();
-        console.log('[Dashboard] Initialization complete');
     } catch (error) {
         console.error('[Dashboard] Initialization failed:', error);
         showToast('Failed to initialize: ' + error.message, 'error');
@@ -1946,20 +1875,12 @@ async function init() {
 }
 
 // ============================================================================
-// Chart.js Availability Check
+// Bootstrap
 // ============================================================================
 
-console.log('[Dashboard] Script loaded, Chart.js available:', typeof Chart !== 'undefined');
-
-// Simple test to verify Chart.js works
-if (typeof Chart !== 'undefined') {
-    console.log('[Dashboard] Chart.js version:', Chart.version);
-}
-
-// Start the app - handle case where DOMContentAlready fired
+// Start the app - handle the case where DOMContentLoaded already fired
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
-    console.log('[Dashboard] DOM already ready, initializing immediately');
     init();
 }

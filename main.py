@@ -27,9 +27,12 @@ def main():
     ]
     print(df[summary_cols].head(10))
 
-    file_name = f"artifacts/{Path(scenario_path).stem}-output.csv"
+    artifacts_dir = Path("artifacts")
+    artifacts_dir.mkdir(exist_ok=True)
+
+    file_name = artifacts_dir / f"{Path(scenario_path).stem}-output.csv"
     df.to_csv(file_name)
-    print(f"\nFull output exported to artifacts/{file_name}")
+    print(f"\nFull output exported to {file_name}")
 
 
 if __name__ == "__main__":

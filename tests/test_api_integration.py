@@ -80,6 +80,13 @@ class TestParametersEndpoint:
         assert "int" in types
         assert "str" in types
 
+    def test_parameter_paths_unique(self):
+        """Every tunable parameter must have a unique path."""
+        response = client.get("/api/scenarios/generic-family/parameters")
+        data = response.json()
+        paths = [p["path"] for p in data]
+        assert len(paths) == len(set(paths))
+
     def test_parameter_min_max(self):
         """Test that numeric parameters have min/max values."""
         response = client.get("/api/scenarios/generic-family/parameters")
@@ -327,7 +334,25 @@ class TestDataQuality:
         assert "peak_net_worth" in summary
         assert "total_income" in summary
         assert "total_tax" in summary
+        assert "total_expenses" in summary
         assert "total_cash_flow" in summary
+
+    def test_summary_total_expenses_positive(self):
+        """Total expenses should be reported as a positive magnitude."""
+        response = client.get("/api/scenarios/generic-family/run")
+        data = response.json()
+        assert data["success"] is True
+        assert data["summary"]["total_expenses"] > 0
+
+    def test_columns_year_not_duplicated(self):
+        """The API should report the Year column exactly once, first."""
+        response = client.get("/api/scenarios/generic-family/run")
+        data = response.json()
+        columns = data["columns"]
+        assert columns[0] == "Year"
+        assert columns.count("Year") == 1
+        # Every data row carries exactly the reported columns
+        assert set(data["data"][0].keys()) == set(columns)
 
 
 if __name__ == "__main__":

@@ -14,20 +14,29 @@ test('Parameter interactions work correctly', async ({ page }) => {
   });
   await scenarioSelect.selectOption('generic-demo');
 
+  // Wait for generic-demo's parameters to finish loading (networkidle covers
+  // the in-flight /parameters fetch) so the category expansion below targets
+  // the final DOM instead of the default scenario's stale one.
+  await page.waitForLoadState('networkidle');
+
   // Wait for parameters to load
   await page.waitForSelector('#parametersList .param-category', { timeout: 10000 });
 
-  // Expand all categories first
-  const categoryHeaders = page.locator('.param-category-header');
-  const count = await categoryHeaders.count();
-  for (let i = 0; i < count; i++) {
-    const header = categoryHeaders.nth(i);
-    const category = header.locator('..');
-    const isCollapsed = await category.evaluate(el => el.classList.contains('collapsed'));
-    if (isCollapsed) {
-      await header.click();
-      await page.waitForTimeout(200);
+  // Expand all categories. Scenario switching re-renders the parameter list
+  // (categories start collapsed), so keep clicking until none remain.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const categoryHeaders = page.locator('.param-category-header');
+    const count = await categoryHeaders.count();
+    for (let i = 0; i < count; i++) {
+      const header = categoryHeaders.nth(i);
+      const isCollapsed = await header.locator('..').evaluate(el => el.classList.contains('collapsed'));
+      if (isCollapsed) {
+        await header.click();
+      }
     }
+    const stillCollapsed = await page.locator('.param-category.collapsed').count();
+    if (stillCollapsed === 0) break;
+    await page.waitForTimeout(200);
   }
 
   // Test 1: Life Decision toggle from .variable_meta (social security)

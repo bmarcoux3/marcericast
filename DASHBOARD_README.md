@@ -112,7 +112,6 @@ pytest tests/
 
 - `Ctrl+Enter` - Run simulation
 - `Ctrl+S` - Export CSV
-- `Escape` - Close modals
 
 ### Parameter Categories
 

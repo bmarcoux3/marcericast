@@ -91,7 +91,7 @@ events:
       interest_rate: 0.065
       term_years: 30
     costs:
-      maintainance: 0.05
+      maintenance: 0.05
       taxes: 0.015
       HOA: 0.001
 

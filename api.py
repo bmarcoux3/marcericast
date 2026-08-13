@@ -31,10 +31,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for local development
+# Enable CORS for local development. The dashboard is served from the same
+# origin, so only allow explicit local origins (never "*" with credentials).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -278,6 +282,14 @@ def dataframe_to_response(df: pd.DataFrame) -> Dict[str, Any]:
         summary["total_tax"] = float(df["Federal Tax"].sum())
     if "Net Cash Flow" in df.columns:
         summary["total_cash_flow"] = float(df["Net Cash Flow"].sum())
+
+    # Total expenses across all spending categories (including taxes and
+    # investments). Tag columns are negative for expenses and positive for
+    # income, so only the negative contributions count as spending.
+    tag_columns = [col for col in df.columns if col.startswith("Tag: ")]
+    if tag_columns:
+        total_expenses = float(df[tag_columns].clip(upper=0).sum().sum())
+        summary["total_expenses"] = -total_expenses
 
     return {
         "data": records,
@@ -665,31 +677,10 @@ def get_tunable_parameters(config: ScenarioConfig, variables: Dict[str, Any] = N
         # Step adjustments for conditional events (e.g. "fourth kid exists")
         # are handled above via the generic .alias_refs mechanism.
 
-        # Gap years
-        if hasattr(event, 'gap_years') and event.gap_years:
-            parameters.append(ParameterInfo(
-                path=f"events.{event.id}.gap_years",
-                current_value=event.gap_years,
-                default_value=event.gap_years,
-                description=f"Gap years for {event.name} (years when event is skipped)",
-                parameter_type="list",
-                tags=event_tags,
-            ))
-
     return parameters
 
 
 # --- API Endpoints ---
-
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {
-        "name": "Personal Cashflow Simulation API",
-        "version": "1.0.0",
-        "description": "API for running financial simulations and exploring scenarios",
-    }
-
 
 @app.get("/api/scenarios", response_model=List[ScenarioInfo])
 async def list_scenarios():

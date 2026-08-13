@@ -703,28 +703,6 @@ body {
     border-color: var(--series-1);
 }
 
-.param-description {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    line-height: 1.4;
-}
-
-.param-reset-btn {
-    padding: 4px 8px;
-    font-size: 0.6875rem;
-    color: var(--text-muted);
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.param-reset-btn:hover {
-    color: var(--series-1);
-    border-color: var(--series-1);
-}
-
 .sidebar-footer {
     display: flex;
     gap: var(--space-2);
@@ -1062,97 +1040,6 @@ body {
 }
 
 /* ==========================================================================
-   Modal
-   ========================================================================== */
-
-.modal {
-    position: fixed;
-    inset: 0;
-    z-index: 2000;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
-}
-
-.modal.open {
-    display: flex;
-}
-
-.modal-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(11, 11, 11, 0.5);
-    animation: fadeIn 0.2s ease;
-}
-
-.modal-content {
-    position: relative;
-    width: 100%;
-    max-width: 480px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
-    animation: slideUp 0.3s ease;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-4);
-    border-bottom: 1px solid var(--border);
-}
-
-.modal-header h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.modal-close {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.5rem;
-    cursor: pointer;
-    border-radius: var(--radius-md);
-    transition: all var(--transition-fast);
-}
-
-.modal-close:hover {
-    background: var(--surface-3);
-    color: var(--text-primary);
-}
-
-.modal-body {
-    padding: var(--space-4);
-}
-
-/* ==========================================================================
    Responsive
    ========================================================================== */
 
@@ -1345,8 +1232,8 @@ body {
 }
 
 .step-adjustment-delete:hover {
-    color: var(--status-error);
-    border-color: var(--status-error);
+    color: var(--status-critical);
+    border-color: var(--status-critical);
     background: rgba(227, 73, 72, 0.1);
 }
 
