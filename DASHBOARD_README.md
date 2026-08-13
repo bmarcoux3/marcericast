@@ -49,20 +49,19 @@ personal-cashflow/
 ### Prerequisites
 
 - Python 3.10+
-- pip
+- [uv](https://github.com/astral-sh/uv) (Python package manager)
+- [bun](https://bun.sh) (JS package manager, for the Playwright e2e tests)
 
 ### Setup
 
 ```bash
-# Clone/navigate to the project
 cd personal-cashflow
 
-# Create virtual environment (recommended)
-python3 -m venv .venv
-source .venv/bin/activate
+# Install Python dependencies (creates .venv)
+uv sync
 
-# Install dependencies
-pip install -r requirements.txt
+# Install JS dev dependencies (Playwright, used only for e2e tests)
+bun install
 ```
 
 ## Running the Application
@@ -71,7 +70,7 @@ pip install -r requirements.txt
 
 ```bash
 # Start the FastAPI server (serves both API and frontend)
-python3 -m uvicorn api:app --host 0.0.0.0 --port 8000
+uv run uvicorn api:app --host 0.0.0.0 --port 8000
 
 # Open in browser
 # http://localhost:8000
@@ -83,16 +82,21 @@ The dashboard will be available at **http://localhost:8000**
 
 ```bash
 # Run a scenario and output CSV to artifacts/
-python3 main.py generic-demo
+uv run python main.py generic-demo
 
 # Or with default generic-demo scenario
-python3 main.py
+uv run python main.py
 ```
 
 ### Option 3: Run Tests
 
 ```bash
-pytest tests/
+# Python unit/integration tests
+uv run pytest tests/
+
+# End-to-end tests (Playwright) — requires the server running on :8000
+# Start the server first, then in a second terminal:
+bunx playwright test
 ```
 
 ## Using the Dashboard
@@ -258,10 +262,9 @@ lsof -ti:8000 | xargs kill -9
 ### Module Import Errors
 
 ```bash
-# Ensure you're in the project root and venv is activated
+# Ensure you're in the project root and the uv-managed .venv is present
 cd personal-cashflow
-source .venv/bin/activate
-python3 -m uvicorn api:app --host 0.0.0.0 --port 8000
+uv run uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
 ### Simulation Errors
