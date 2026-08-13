@@ -1,0 +1,20 @@
+# .gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.csv
+artifacts/*
+.env
+.claude*
+node_modules/*
+test-results/
+
+# Personal scenarios & notes (untracked from public repo)
+scenarios/marcoux.yaml
+scenarios/marcoux-mary-break.yaml
+backlog.md
+
+# Private working docs & legacy code (not for public repo)
+planning/*
+scenarios/private

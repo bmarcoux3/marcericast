@@ -1,0 +1,27 @@
+{
+  "name": "marcericast",
+  "version": "1.0.0",
+  "description": "Deterministic personal cash flow, tax, and net worth projection engine driven by declarative YAML scenarios",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "python -m pytest tests/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bmarcoux3/marcericast.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/bmarcoux3/marcericast/issues"
+  },
+  "homepage": "https://github.com/bmarcoux3/marcericast#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}

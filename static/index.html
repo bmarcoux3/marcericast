@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Cashflow Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1 class="app-title">Personal Cashflow Dashboard</h1>
+                <span class="scenario-badge" id="scenarioBadge">Loading...</span>
+            </div>
+            <div class="header-right">
+                <label class="real-dollars-toggle" for="realDollarsToggle">
+                    <input type="checkbox" id="realDollarsToggle" aria-label="Show in today's dollars" checked>
+                    <span class="real-dollars-label">Today's Dollars</span>
+                </label>
+                <span class="real-dollars-badge" id="realDollarsBadge" style="display: none;">Today's Dollars</span>
+                <button class="btn btn-primary" id="runSimulationBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    Run Simulation
+                </button>
+                <button class="btn btn-secondary" id="exportCsvBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Export CSV
+                </button>
+                <button class="btn btn-ghost" id="themeToggle" aria-label="Toggle theme">
+                    <svg class="sun-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="moon-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main">
+            <!-- Sidebar: Parameters -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h2>Parameters</h2>
+                    <div class="sidebar-controls">
+                        <input type="text" class="search-input" id="paramSearch" placeholder="Search parameters..." aria-label="Search parameters">
+                        <select class="category-filter" id="categoryFilter" aria-label="Filter by category">
+                            <option value="all">All Categories</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="scenario-selector">
+                    <label for="scenarioSelect">Scenario</label>
+                    <select id="scenarioSelect" aria-label="Select scenario">
+                        <option value="">Loading scenarios...</option>
+                    </select>
+                </div>
+
+                <div class="year-range">
+                    <div class="year-input">
+                        <label for="startYear">Start Year</label>
+                        <input type="number" id="startYear" min="2020" max="2100" value="2026">
+                    </div>
+                    <div class="year-input">
+                        <label for="endYear">End Year</label>
+                        <input type="number" id="endYear" min="2020" max="2100" value="2079">
+                    </div>
+                </div>
+
+                <div class="parameters-list" id="parametersList">
+                    <div class="loading">Loading parameters...</div>
+                </div>
+
+                <div class="sidebar-footer">
+                    <button class="btn btn-secondary btn-sm" id="resetParamsBtn">Reset All</button>
+                    <button class="btn btn-primary btn-sm" id="applyParamsBtn">Apply Changes</button>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <div class="content">
+                <!-- Summary Cards -->
+                <div class="summary-grid" id="summaryGrid">
+                    <div class="summary-card">
+                        <div class="summary-icon income">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="19" x2="12" y2="5"></line>
+                                <polyline points="5 12 12 5 19 12"></polyline>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <span class="summary-label">Total Income</span>
+                            <span class="summary-value" id="totalIncome">$0</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-icon expense">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <polyline points="19 12 12 19 5 12"></polyline>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <span class="summary-label">Total Expenses</span>
+                            <span class="summary-value" id="totalExpenses">$0</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-icon networth">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <span class="summary-label">Final Net Worth</span>
+                            <span class="summary-value" id="finalNetWorth">$0</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-icon peak">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="17 18 15 22 13 18"></polyline>
+                                <polyline points="5 18 7 22 9 18"></polyline>
+                                <path d="M20 12.09C19.5 8.69 16.75 6 13 6S6.5 8.69 6 12.09"></path>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <span class="summary-label">Peak Net Worth</span>
+                            <span class="summary-value" id="peakNetWorth">$0</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-icon cashflow">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <span class="summary-label">Net Cash Flow</span>
+                            <span class="summary-value" id="netCashFlow">$0</span>
+                        </div>
+                    </div>
+                    <div class="summary-card">
+                        <div class="summary-icon tax">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <span class="summary-label">Total Tax Paid</span>
+                            <span class="summary-value" id="totalTax">$0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts -->
+                <div class="charts-grid">
+                    <!-- Net Worth Chart -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Net Worth Over Time</h3>
+                            <div class="chart-controls">
+                                <select id="netWorthChartType" class="chart-type-select" aria-label="Chart type">
+                                    <option value="line">Line</option>
+                                    <option value="area">Area</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="netWorthChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Cash Flow Chart -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Annual Cash Flow</h3>
+                            <div class="chart-controls">
+                                <select id="cashFlowChartType" class="chart-type-select" aria-label="Chart type">
+                                    <option value="bar">Bar</option>
+                                    <option value="line">Line</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="cashFlowChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Income vs Expenses -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Income vs Expenses</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="incomeExpenseChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Asset Allocation -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Asset Allocation (Final Year)</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="assetAllocationChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Tag Spending Breakdown -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Spending by Category</h3>
+                            <div class="chart-controls">
+                                <select id="tagChartYear" class="chart-type-select" aria-label="Select view">
+                                    <option value="all">All Years (Stacked)</option>
+                                    <option value="percent">Percent of Spending</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="tagSpendingChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Parallel Coordinates -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Spending by Category (Parallel Coordinates)</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="parallelCoordChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Debt Paydown -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Debt Paydown</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="debtChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Tax Burden -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Tax Burden Over Time</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="taxChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Account Balances -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Account Balances</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="accountBalancesChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="table-card" id="tableCard" style="display: none;">
+                    <div class="table-header">
+                        <h3>Data Table</h3>
+                        <div class="table-controls">
+                            <input type="text" class="search-input" id="tableSearch" placeholder="Filter columns...">
+                            <button class="btn btn-secondary btn-sm" id="downloadTableBtn">Download CSV</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="dataTable">
+                            <thead></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Parameter Detail Modal -->
+    <div class="modal" id="paramModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Parameter Details</h3>
+                <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

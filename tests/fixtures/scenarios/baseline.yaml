@@ -1,0 +1,92 @@
+version: "1.0"
+
+meta:
+  scenario_name: "Baseline Early Retirement Plan"
+  start_year: 2026
+  end_year: 2056
+  tax_status: "MFJ"
+
+macroeconomics:
+  general_inflation_rate: 0.025
+  growth_rates:
+    equities: 0.07
+    bonds: 0.035
+    real_estate: 0.03
+
+tax_rules:
+  federal:
+    standard_deduction: 32200
+    brackets:
+      - limit: 24800
+        rate: 0.10
+      - limit: 100800
+        rate: 0.12
+      - limit: 211400
+        rate: 0.22
+      - limit: 403550
+        rate: 0.24
+      - limit: 512450
+        rate: 0.32
+      - limit: 768700
+        rate: 0.35
+      - limit: .inf
+        rate: 0.37
+
+accounts:
+  - id: "checking_primary"
+    name: "Primary Checking"
+    type: "liquid"
+    balance: 50000.0
+    growth_rate_ref: "bonds"
+    is_cash_reserve: true
+    min_target_balance: 20000.0
+
+  - id: "brokerage_vti"
+    name: "Taxable Brokerage"
+    type: "taxable_brokerage"
+    balance: 250000.0
+    growth_rate_ref: "equities"
+    cost_basis: 180000.0
+
+waterfall_strategy:
+  surplus_allocation:
+    - account_id: "brokerage_vti"
+
+  deficit_drawdown_order:
+    - account_id: "checking_primary"
+    - account_id: "brokerage_vti"
+
+events:
+  - id: "tech_job_salary"
+    name: "Software Engineer Salary"
+    type: "cash_stream"
+    category: "income"
+    start_year: 2026
+    end_year: 2045
+    base_amount: 180000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    is_taxable_income: true
+
+  - id: "living_expenses"
+    name: "Living Expenses"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: 2056
+    base_amount: 75000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+
+  - id: "buy_home"
+    name: "Purchase Primary Residence"
+    type: "asset_purchase"
+    trigger_year: 2030
+    down_payment: 120000.0
+    asset_name: "Primary Home"
+    asset_initial_value: 600000.0
+    growth_rate_ref: "real_estate"
+    mortgage:
+      principal: 480000.0
+      interest_rate: 0.065
+      term_years: 30

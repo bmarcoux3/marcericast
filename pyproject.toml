@@ -1,0 +1,20 @@
+[project]
+name = "personal-cashflow"
+version = "0.1.0"
+description = "Deterministic personal cash flow, tax, and net worth projection engine driven by declarative YAML scenarios"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas>=3.0.3",
+    "pyyaml>=6.0.3",
+    "pydantic>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = "."
+

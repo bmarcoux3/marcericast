@@ -1,0 +1,416 @@
+.version: "1.0"
+
+# ==========================================
+# Fictional household used by the test suite.
+# Round numbers chosen so every figure can be hand-computed.
+# ==========================================
+
+.variables:
+  - &end_year 2079
+  - &retirement 2060
+  - &assisted_living_start 2074
+  - &kid_four_exists 1
+  - &social_security_enabled 0
+
+.variable_meta:
+  end_year:
+    label: "End Year"
+    control: "slider"
+    min: 2050
+    max: 2099
+    step: 1
+  retirement:
+    label: "Retirement Year"
+    control: "slider"
+    min: 2040
+    max: 2075
+    step: 1
+  assisted_living_start:
+    label: "Assisted Living Start Year"
+    control: "slider"
+    min: 2060
+    max: 2090
+    step: 1
+  kid_four_exists:
+    label: "Fourth Child Exists"
+    control: "toggle"
+  social_security_enabled:
+    label: "Social Security Enabled"
+    description: "Whether Social Security benefits are modeled."
+    control: "toggle"
+
+meta:
+  scenario_name: "Generic Family Plan"
+  start_year: 2026
+  end_year: *end_year
+  tax_status: "MFJ"
+  birth_year: 1990
+
+macroeconomics:
+  general_inflation_rate: 0.025
+  growth_rates:
+    equities: 0.07
+    bonds: 0.035
+    real_estate: 0.03
+    cash_equivalents: 0.02
+
+tax_rules:
+  inflate_brackets: true
+  reference_year: 2026
+  inflation_ref: "general_inflation_rate"
+  federal:
+    standard_deduction: 32200.0
+    brackets:
+      - limit: 24800.0
+        rate: 0.10
+      - limit: 100800.0
+        rate: 0.12
+      - limit: 211400.0
+        rate: 0.22
+      - limit: 403550.0
+        rate: 0.24
+      - limit: 512450.0
+        rate: 0.32
+      - limit: 768700.0
+        rate: 0.35
+      - limit: .inf
+        rate: 0.37
+  capital_gains:
+    brackets:
+      - limit: 94050.0
+        rate: 0.0
+      - limit: 583750.0
+        rate: 0.15
+      - limit: .inf
+        rate: 0.20
+
+accounts:
+  - id: "checking_primary"
+    name: "Primary Checking"
+    type: "liquid"
+    balance: 50000.0
+    growth_rate_ref: "cash_equivalents"
+    is_cash_reserve: true
+    min_target_balance: 20000.0
+    max_target_balance: 30000.0
+
+  - id: "brokerage_primary"
+    name: "Primary Taxable Brokerage"
+    type: "taxable_brokerage"
+    balance: 100000.0
+    growth_rate_ref: "equities"
+    cost_basis: 50000.0
+
+  - id: "retirement_pretax"
+    name: "Pre-Tax Retirement (401k)"
+    type: "traditional_401k"
+    balance: 50000.0
+    growth_rate_ref: "equities"
+
+  - id: "retirement_roth"
+    name: "Roth IRA"
+    type: "roth_ira"
+    balance: 10000.0
+    growth_rate_ref: "equities"
+
+  - id: "college_529"
+    name: "College 529"
+    type: "taxable_brokerage"
+    balance: 0.0
+    growth_rate_ref: "equities"
+
+waterfall_strategy:
+  surplus_allocation:
+    - account_id: "checking_primary"
+      max_annual_contribution: 30000.0
+    - account_id: "brokerage_primary"
+  deficit_drawdown_order:
+    - account_id: "checking_primary"
+    - account_id: "brokerage_primary"
+
+events:
+  # ==========================================
+  # INCOME & RETIREMENT CONTRIBUTIONS
+  # ==========================================
+  - id: "primary_salary"
+    name: "Primary Earner Salary"
+    type: "cash_stream"
+    category: "income"
+    start_year: 2026
+    end_year: *retirement
+    base_amount: 120000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    is_taxable_income: true
+    is_earned_income: true
+    gap_years: []
+    step_adjustments:
+      2036: 1.10
+
+  - id: "secondary_salary"
+    name: "Secondary Earner Salary"
+    type: "cash_stream"
+    category: "income"
+    start_year: 2026
+    end_year: *retirement
+    base_amount: 80000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    is_taxable_income: true
+    is_earned_income: true
+    gap_years: []
+
+  - id: "pretax_401k_contributions"
+    name: "Pre-Tax 401k Contributions"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *retirement
+    base_amount: 20000.0
+    reference_year: 2026
+    target_account_id: retirement_pretax
+    inflation_ref: "general_inflation_rate"
+    is_pre_tax_deduction: true
+    tags: ["Investments"]
+
+  - id: "roth_contributions"
+    name: "Roth IRA Contributions"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *retirement
+    base_amount: 5000.0
+    reference_year: 2026
+    target_account_id: retirement_roth
+    inflation_ref: "general_inflation_rate"
+    is_pre_tax_deduction: false
+    tags: ["Investments"]
+
+  - id: "college_529_contributions"
+    name: "College 529 Contributions"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: 2046
+    base_amount: 12000.0
+    reference_year: 2026
+    target_account_id: college_529
+    inflation_ref: "general_inflation_rate"
+    is_pre_tax_deduction: false
+    tags: ["Investments", "Children"]
+
+  - id: "social_security"
+    name: "Social Security"
+    type: "cash_stream"
+    category: "income"
+    start_year: 2061
+    end_year: *end_year
+    base_amount: 40000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    is_taxable_income: true
+    is_earned_income: false
+    step_adjustments:
+      2061: *social_security_enabled
+
+  # ==========================================
+  # HOUSING
+  # ==========================================
+  - id: "family_home_purchase"
+    name: "Family Home Purchase"
+    type: "asset_purchase"
+    trigger_year: 2026
+    down_payment: 150000.0
+    asset_name: "Family Home"
+    asset_initial_value: 500000.0
+    growth_rate_ref: "real_estate"
+    mortgage:
+      principal: 350000.0
+      interest_rate: 0.065
+      term_years: 30
+    costs:
+      tax: 0.019
+      insurance: 0.015
+      maintainance: 0.02
+      HOA: 0.0048
+    purchase_fees:
+      closing_costs: 0.03
+      title_insurance: 0.005
+    tags: ["Housing"]
+
+  # Downsize after retirement in 2061
+  - id: "family_home_liquidation"
+    name: "Sell Family Home (Downsize)"
+    type: "asset_liquidation"
+    trigger_year: 2061
+    asset_name: "Family Home"
+    primary_residence_exclusion: 500000.0
+    sale_fees:
+      agent_commission: 0.06
+      closing_costs: 0.02
+    tags: ["Housing"]
+
+  - id: "retirement_home_purchase"
+    name: "Retirement Home Purchase"
+    type: "asset_purchase"
+    trigger_year: 2061
+    down_payment: 400000.0
+    asset_name: "Retirement Home"
+    asset_initial_value: 400000.0
+    growth_rate_ref: "real_estate"
+    mortgage: null
+    costs:
+      tax: 0.015
+      insurance: 0.01
+      maintainance: 0.01
+      HOA: 0.008
+    purchase_fees:
+      closing_costs: 0.03
+      title_insurance: 0.005
+    tags: ["Housing"]
+
+  # Sell retirement home in 2074 when moving into assisted living
+  - id: "retirement_home_liquidation"
+    name: "Sell Retirement Home (Assisted Living)"
+    type: "asset_liquidation"
+    trigger_year: 2074
+    asset_name: "Retirement Home"
+    primary_residence_exclusion: 500000.0
+    sale_fees:
+      agent_commission: 0.06
+      closing_costs: 0.02
+    tags: ["Housing"]
+
+  # ==========================================
+  # CHILDREN
+  # ==========================================
+  - id: "kid_four_daycare"
+    name: "Kid 4 Daycare"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2030
+    end_year: 2035
+    base_amount: *kid_four_exists
+    reference_year: 2030
+    inflation_ref: "general_inflation_rate"
+    step_adjustments:
+      2030: 8000.0
+    tags: ["Children"]
+
+  - id: "kid_four_college"
+    name: "Kid 4 College"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2047
+    end_year: 2051
+    base_amount: *kid_four_exists
+    reference_year: 2047
+    inflation_ref: "general_inflation_rate"
+    step_adjustments:
+      2047: 30000.0
+    tags: ["Children"]
+
+  # ==========================================
+  # LATER LIFE
+  # ==========================================
+  - id: "assisted_living"
+    name: "Assisted Living"
+    type: "cash_stream"
+    category: "expense"
+    start_year: *assisted_living_start
+    end_year: *end_year
+    base_amount: 60000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Healthcare"]
+
+  # ==========================================
+  # DAY-TO-DAY LIVING
+  # ==========================================
+  - id: "general_lifestyle"
+    name: "General Lifestyle Spend"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *end_year
+    base_amount: 45000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Food & Living"]
+
+  - id: "housing_utilities"
+    name: "Utilities & Bills"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *end_year
+    base_amount: 6000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Utilities"]
+
+  - id: "transportation"
+    name: "Transportation & Vehicle Costs"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *end_year
+    base_amount: 8000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Transportation"]
+
+  - id: "travel_discretionary"
+    name: "Travel & Discretionary"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *end_year
+    base_amount: 12000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Travel & Discretionary"]
+
+  - id: "family_insurance"
+    name: "Life & Health Insurance"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *end_year
+    base_amount: 5000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Insurance"]
+
+  - id: "pets"
+    name: "Pets"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *end_year
+    base_amount: 1500.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Pets"]
+
+  - id: "technology"
+    name: "Technology & Gadgets"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: *end_year
+    base_amount: 2500.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Technology"]
+
+  - id: "legal_planning"
+    name: "Estate Planning & Legal"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: 2026
+    base_amount: 3000.0
+    reference_year: 2026
+    inflation_ref: "general_inflation_rate"
+    tags: ["Legal"]
