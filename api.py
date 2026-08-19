@@ -131,7 +131,7 @@ def get_available_scenarios() -> List[ScenarioInfo]:
     """Get list of available scenario files."""
     scenarios_dir = get_scenarios_dir()
     scenarios = []
-    for yaml_file in scenarios_dir.glob("*.yaml"):
+    for yaml_file in scenarios_dir.rglob("*.yaml"):
         try:
             config, _ = load_scenario_from_yaml(yaml_file, return_variables=True)
             scenarios.append(ScenarioInfo(
