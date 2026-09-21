@@ -10,6 +10,7 @@ class AccountState:
     balance: float
     growth_rate_ref: Optional[str] = None
     is_cash_reserve: bool = False
+    is_liquid: bool = True
     min_target_balance: float = 0.0
     max_target_balance: float = 0.0
     cost_basis: float = 0.0

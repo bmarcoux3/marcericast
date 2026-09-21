@@ -229,6 +229,7 @@ accounts:
   - id: "college_529"
     name: "College 529 Plans"
     type: "taxable_brokerage"
+    is_liquid: false
     balance: 20000.0
     growth_rate_ref: "equities"
     cost_basis: 20000.0

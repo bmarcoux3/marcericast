@@ -921,6 +921,59 @@ function renderNetWorthChart() {
     }
 }
 
+function renderLiquidNetWorthChart() {
+    const canvas = document.getElementById('liquidNetWorthChart');
+    if (!canvas) return;
+    if (typeof Chart === 'undefined') return;
+    const ctx = canvas.getContext('2d');
+    destroyChart('liquidNetWorth');
+
+    const data = state.simulationData;
+    if (!data) return;
+    const years = data.map(d => d.Year);
+    const liquidNetWorth = data.map(d => d['Liquid Net Worth'] || 0);
+    const liquidAssets = data.map(d => d['Liquid Assets'] || 0);
+
+    const chartType = document.getElementById('liquidNetWorthChartType').value;
+
+    try {
+        state.charts.liquidNetWorth = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: years,
+                datasets: [
+                    {
+                        label: 'Liquid Net Worth',
+                        data: liquidNetWorth,
+                        borderColor: CHART_COLORS[2],
+                        backgroundColor: chartType === 'area' ? createGradient(ctx, CHART_COLORS[2]) : 'transparent',
+                        fill: chartType === 'area',
+                        tension: 0.3,
+                        pointRadius: 0,
+                        pointHoverRadius: 6,
+                        borderWidth: 2.5,
+                    },
+                    {
+                        label: 'Liquid Assets',
+                        data: liquidAssets,
+                        borderColor: CHART_COLORS[0],
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        borderWidth: 1.5,
+                        borderDash: [5, 5],
+                    },
+                ],
+            },
+            options: getCommonChartOptions('Liquid ($)', true),
+        });
+    } catch (error) {
+        console.error('[Dashboard] Error creating liquidNetWorthChart:', error);
+    }
+}
+
 function renderCashFlowChart() {
     const ctx = document.getElementById('cashFlowChart').getContext('2d');
     destroyChart('cashFlow');
@@ -1702,6 +1755,7 @@ function renderParallelCoordChart() {
 }
 
 function renderAllCharts() {
+    renderLiquidNetWorthChart();
     renderNetWorthChart();
     renderCashFlowChart();
     renderIncomeExpenseChart();
@@ -1859,6 +1913,7 @@ function setupEventListeners() {
     document.getElementById('applyParamsBtn').addEventListener('click', applyParameterChanges);
 
     // Chart type selectors
+    document.getElementById('liquidNetWorthChartType').addEventListener('change', renderLiquidNetWorthChart);
     document.getElementById('netWorthChartType').addEventListener('change', renderNetWorthChart);
     document.getElementById('cashFlowChartType').addEventListener('change', renderCashFlowChart);
     document.getElementById('tagChartYear').addEventListener('change', renderTagSpendingChart);

@@ -106,6 +106,7 @@ class AccountConfig(BaseModel):
     balance: float = 0.0
     growth_rate_ref: Optional[str] = None
     is_cash_reserve: bool = False
+    is_liquid: Optional[bool] = None
     min_target_balance: float = 0.0
     max_target_balance: float = 0.0
     cost_basis: float = 0.0

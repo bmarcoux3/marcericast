@@ -86,6 +86,7 @@ class SimulationRunner:
                 balance=acc.balance,
                 growth_rate_ref=acc.growth_rate_ref,
                 is_cash_reserve=acc.is_cash_reserve,
+                is_liquid=acc.is_liquid if acc.is_liquid is not None else acc.type in ("liquid", "taxable_brokerage"),
                 min_target_balance=acc.min_target_balance,
                 max_target_balance=acc.max_target_balance,
                 cost_basis=acc.cost_basis,
@@ -351,6 +352,13 @@ class SimulationRunner:
             total_assets = total_account_balances + total_asset_values
             net_worth = total_assets - total_debt_liabilities
 
+            # 5d. High-Liquidity Net Worth: cash/savings + taxable brokerage (funds
+            # available within a day), minus revolving (uncovered deficit) debt.
+            # Mortgages and non-liquid assets (home, etc.) are intentionally excluded.
+            liquid_assets = sum(acc.balance for acc in state.accounts.values() if acc.is_liquid)
+            revolving_debt = state.debts.get(UNCOVERED_DEFICIT_ID).principal if UNCOVERED_DEFICIT_ID in state.debts else 0.0
+            liquid_net_worth = liquid_assets - revolving_debt
+
             # Assemble period snapshot in explicit column group order:
             # LEFT SIDE: Non-cashflow items (balances, values, metrics for reference)
             # 1. Summary Metrics (leftmost - for quick reference)
@@ -373,6 +381,8 @@ class SimulationRunner:
 
             # 5. Totals & Net Worth
             period_data["Total Account Balances"] = total_account_balances
+            period_data["Liquid Assets"] = liquid_assets
+            period_data["Liquid Net Worth"] = liquid_net_worth
             period_data["Total Assets"] = total_assets
             period_data["Total Liabilities"] = total_debt_liabilities
             period_data["Net Worth"] = net_worth
@@ -430,7 +440,7 @@ class SimulationRunner:
 
         for col in df.columns:
             # LEFT: Summary metrics, Account balances, Totals, Net Worth, Tax details
-            if col.startswith(("Account: ", "Total ", "Net Worth",
+            if col.startswith(("Account: ", "Total ", "Net Worth", "Liquid ",
                               "Gross Taxable", "Pre-tax", "AGI", "Net Cash Flow",
                               "Tax: Standard", "Tax: Taxable")):
                 left_cols.append(col)

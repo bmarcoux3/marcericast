@@ -182,6 +182,22 @@
 
                 <!-- Charts -->
                 <div class="charts-grid">
+                    <!-- Liquid Net Worth Chart -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>High-Liquidity Net Worth</h3>
+                            <div class="chart-controls">
+                                <select id="liquidNetWorthChartType" class="chart-type-select" aria-label="Chart type">
+                                    <option value="area">Area</option>
+                                    <option value="line">Line</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="liquidNetWorthChart"></canvas>
+                        </div>
+                    </div>
+
                     <!-- Net Worth Chart -->
                     <div class="chart-card large">
                         <div class="chart-header">

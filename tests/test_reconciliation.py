@@ -31,6 +31,7 @@ _AGGREGATE_PREFIXES = (
     "Account: ",
     "Total ",
     "Net Worth",
+    "Liquid ",
     "Gross Taxable",
     "Pre-tax",
     "AGI",
