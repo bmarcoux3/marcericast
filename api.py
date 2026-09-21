@@ -127,6 +127,23 @@ def get_scenarios_dir() -> Path:
     return Path(__file__).parent / "scenarios"
 
 
+def resolve_scenario_path(scenario_name: str) -> Path:
+    """Resolve a scenario name to its YAML file path.
+
+    Supports both flat names (``"generic-demo"``) and names with a
+    ``::`` separator for subdirectories (``"private::marcoux"``).
+    Falls back to a flat lookup for backward compatibility.
+    """
+    scenarios_dir = get_scenarios_dir()
+    nested = scenarios_dir / Path(scenario_name.replace("::", "/")).with_suffix(".yaml")
+    if nested.exists():
+        return nested
+    flat = scenarios_dir / f"{scenario_name}.yaml"
+    if flat.exists():
+        return flat
+    return nested
+
+
 def get_available_scenarios() -> List[ScenarioInfo]:
     """Get list of available scenario files."""
     scenarios_dir = get_scenarios_dir()
@@ -134,8 +151,10 @@ def get_available_scenarios() -> List[ScenarioInfo]:
     for yaml_file in scenarios_dir.rglob("*.yaml"):
         try:
             config, _ = load_scenario_from_yaml(yaml_file, return_variables=True)
+            relative = yaml_file.relative_to(scenarios_dir).with_suffix("")
+            name = "::".join(relative.parts)
             scenarios.append(ScenarioInfo(
-                name=yaml_file.stem,
+                name=name,
                 display_name=config.meta.scenario_name,
                 start_year=config.meta.start_year,
                 end_year=config.meta.end_year,
@@ -700,7 +719,7 @@ async def list_scenarios():
 @app.get("/api/scenarios/{scenario_name}/parameters", response_model=List[ParameterInfo])
 async def get_scenario_parameters(scenario_name: str):
     """Get all tunable parameters for a scenario."""
-    scenario_path = get_scenarios_dir() / f"{scenario_name}.yaml"
+    scenario_path = resolve_scenario_path(scenario_name)
     if not scenario_path.exists():
         raise HTTPException(status_code=404, detail=f"Scenario '{scenario_name}' not found")
 
@@ -711,7 +730,7 @@ async def get_scenario_parameters(scenario_name: str):
 @app.post("/api/scenarios/{scenario_name}/run", response_model=SimulationResponse)
 async def run_scenario(scenario_name: str, request: RunScenarioRequest):
     """Run a scenario with optional parameter overrides."""
-    scenario_path = get_scenarios_dir() / f"{scenario_name}.yaml"
+    scenario_path = resolve_scenario_path(scenario_name)
     if not scenario_path.exists():
         raise HTTPException(status_code=404, detail=f"Scenario '{scenario_name}' not found")
 
@@ -761,7 +780,7 @@ async def run_scenario_get(
     real_dollars: bool = Query(False, description="Deflate all future dollars to today's (start year) dollars"),
 ):
     """Run a scenario via GET with query parameter overrides."""
-    scenario_path = get_scenarios_dir() / f"{scenario_name}.yaml"
+    scenario_path = resolve_scenario_path(scenario_name)
     if not scenario_path.exists():
         raise HTTPException(status_code=404, detail=f"Scenario '{scenario_name}' not found")
 
@@ -825,7 +844,7 @@ async def run_scenario_get(
 @app.get("/api/export/{scenario_name}")
 async def export_csv(scenario_name: str):
     """Export scenario results as CSV."""
-    scenario_path = get_scenarios_dir() / f"{scenario_name}.yaml"
+    scenario_path = resolve_scenario_path(scenario_name)
     if not scenario_path.exists():
         raise HTTPException(status_code=404, detail=f"Scenario '{scenario_name}' not found")
 
