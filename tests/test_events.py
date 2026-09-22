@@ -84,6 +84,54 @@ def test_cash_stream_event_gap_years(macro_config, sim_state):
     assert impact.total_inflow == 0.0
 
 
+def test_contribution_transfer_is_not_an_expense(macro_config, sim_state):
+    """Retirement/529 contributions credit their account and reduce AGI when
+    pre-tax, but are NOT consumption expenses (no post_tax expense or net cash
+    flow impact) -- they are savings transfers into an account."""
+    pre_tax_config = CashStreamEventConfig(
+        id="pretax_401k",
+        name="Pre-Tax 401k",
+        type="cash_stream",
+        category="expense",
+        start_year=2020,
+        end_year=2040,
+        base_amount=20000.0,
+        reference_year=2030,
+        target_account_id="checking",
+        is_pre_tax_deduction=True,
+        tags=["Investments"],
+    )
+    roth_config = CashStreamEventConfig(
+        id="roth",
+        name="Mega Backdoor Roth",
+        type="cash_stream",
+        category="expense",
+        start_year=2020,
+        end_year=2040,
+        base_amount=5000.0,
+        reference_year=2030,
+        target_account_id="checking",
+        is_pre_tax_deduction=False,
+        tags=["Investments"],
+    )
+
+    pre_tax_impact = CashStreamEvent(pre_tax_config).evaluate(sim_state, macro_config)
+    assert pre_tax_impact.contribution_transfers == 20000.0
+    assert pre_tax_impact.pre_tax_contribution == 20000.0
+    assert pre_tax_impact.pre_tax_deductions == 0.0
+    assert pre_tax_impact.post_tax_expenses == 0.0
+    assert pre_tax_impact.total_outflow == 0.0
+    assert sim_state.accounts["checking"].balance == pytest.approx(170000.0)
+
+    roth_impact = CashStreamEvent(roth_config).evaluate(sim_state, macro_config)
+    assert roth_impact.contribution_transfers == 5000.0
+    assert roth_impact.pre_tax_contribution == 0.0
+    assert roth_impact.post_tax_expenses == 0.0
+    assert roth_impact.total_outflow == 0.0
+    assert roth_impact.net_cash_flow == 0.0
+    assert sim_state.accounts["checking"].balance == pytest.approx(175000.0)
+
+
 # 2. AssetPurchaseEvent & Mortgage Tests
 def test_asset_purchase_event_triggers_downpayment_asset_and_debt(macro_config, sim_state):
     purchase_config = AssetPurchaseEventConfig(

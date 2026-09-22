@@ -248,6 +248,18 @@ function categorizeParameter(param) {
                 return 'Asset Information';
             }
         }
+
+        // 4. Retirement & savings contributions - expense events tagged "Investments"
+        // that transfer cash into an account (401k, Roth IRA, 529). Expose the
+        // contribution amount and active years so they can be tuned from the UI.
+        const isExpenseEvent = categoryParam && categoryParam.current_value === 'expense';
+        const baseParam = state.parameters.find(p => p.path === `events.${eventId}.base_amount`);
+        if (isExpenseEvent && baseParam && (baseParam.tags || []).includes('Investments')) {
+            const paramName = path.split('.').slice(2).join('.');
+            if (paramName === 'base_amount' || paramName === 'start_year' || paramName === 'end_year') {
+                return 'Retirement & Savings';
+            }
+        }
     }
 
     // Hide everything else
@@ -435,6 +447,7 @@ function renderParameters() {
         'Life Decisions',
         'Income',
         'Asset Information',
+        'Retirement & Savings',
         'Other'
     ];
     const sortedCategories = Object.keys(categorized).sort((a, b) => {
@@ -734,6 +747,7 @@ async function loadScenario(scenarioName) {
         // Populate category filter dropdown
         populateCategoryFilter();
 
+        applyRetirementTargetDefaults();
         renderParameters();
     } catch (error) {
         console.error('Failed to load parameters:', error);
@@ -758,6 +772,7 @@ function populateCategoryFilter() {
         'Life Decisions',
         'Income',
         'Asset Information',
+        'Retirement & Savings',
         'Other'
     ];
 
@@ -767,6 +782,25 @@ function populateCategoryFilter() {
     filter.innerHTML = availableCategories.map(cat =>
         `<option value="${cat === 'All Categories' ? 'all' : cat}">${cat}</option>`
     ).join('');
+}
+
+function applyRetirementTargetDefaults() {
+    // Default the Retirement Goal snapshot year to the scenario's retirement
+    // variable (e.g. &retirement 2060) when one is exposed as a parameter, but
+    // never clobber a year the user already typed.
+    const yearInput = document.getElementById('retirementTargetYear');
+    if (!yearInput || yearInput.dataset.userTouched === 'true') return;
+
+    const retirementParam = state.parameters.find(p =>
+        (p.path === 'variables.retirement' || p.path.endsWith('.retirement')) &&
+        typeof p.current_value === 'number'
+    ) || state.parameters.find(p =>
+        (p.path === 'variables.retirement_year' || p.path.endsWith('.retirement_year')) &&
+        typeof p.current_value === 'number'
+    );
+    if (retirementParam && Number.isFinite(retirementParam.current_value)) {
+        yearInput.value = String(Math.round(retirementParam.current_value));
+    }
 }
 
 async function runSimulationWithCurrentParams() {
@@ -1643,6 +1677,132 @@ function renderTaxChart() {
     });
 }
 
+function renderContributionsChart() {
+    const ctx = document.getElementById('contributionsChart').getContext('2d');
+    destroyChart('contributions');
+
+    const data = state.simulationData;
+    if (!data || data.length === 0) return;
+    const years = data.map(d => d.Year);
+    const contributionColumns = state.simulationColumns.filter(c => c.startsWith('Contribution: '));
+
+    if (contributionColumns.length === 0) {
+        ctx.font = '14px system-ui';
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
+        ctx.textAlign = 'center';
+        ctx.fillText('No contribution streams', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        return;
+    }
+
+    const datasets = contributionColumns.map((col, i) => ({
+        label: col.replace('Contribution: ', ''),
+        data: data.map(d => Math.abs(d[col] || 0)),
+        backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + 'CC',
+        borderColor: CHART_COLORS[i % CHART_COLORS.length],
+        borderWidth: 1,
+        borderRadius: 4,
+        stack: 'contrib',
+    }));
+
+    state.charts.contributions = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: years, datasets },
+        options: getCommonChartOptions('Amount ($)'),
+    });
+}
+
+function renderRetirementGoalChart() {
+    const ctx = document.getElementById('retirementGoalChart').getContext('2d');
+    destroyChart('retirementGoal');
+
+    const data = state.simulationData;
+    const summaryEl = document.getElementById('retirementGoalSummary');
+    if (!data || data.length === 0) return;
+
+    const years = data.map(d => d.Year);
+    const retirementAssets = data.map(d => d['Retirement Assets'] || 0);
+    const hasAssets = retirementAssets.some(v => v > 0);
+
+    const targetAmount = parseFloat(document.getElementById('retirementTargetAmount')?.value) || 0;
+    const targetYear = parseInt(document.getElementById('retirementTargetYear')?.value) || years[years.length - 1];
+
+    if (!hasAssets) {
+        ctx.font = '14px system-ui';
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim();
+        ctx.textAlign = 'center';
+        ctx.fillText('No retirement assets in this scenario', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        if (summaryEl) summaryEl.textContent = '';
+        return;
+    }
+
+    // Projected balance at the target year (clamp to available range)
+    const targetIndex = Math.min(Math.max(years.indexOf(targetYear), 0), years.length - 1);
+    const projectedAtTarget = retirementAssets[targetIndex];
+    // First year the assets cross the target (only meaningful for target > 0)
+    let metYear = null;
+    for (let i = 0; i < years.length; i++) {
+        if (targetAmount > 0 && retirementAssets[i] >= targetAmount) { metYear = years[i]; break; }
+    }
+
+    const maxYearValue = Math.max(...retirementAssets, targetAmount);
+
+    state.charts.retirementGoal = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: years,
+            datasets: [
+                {
+                    label: 'Retirement Assets',
+                    data: retirementAssets,
+                    borderColor: CHART_COLORS[1],
+                    backgroundColor: createGradient(ctx, CHART_COLORS[1]),
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    borderWidth: 2.5,
+                },
+                {
+                    label: `Target ${formatCurrency(targetAmount)} by ${targetYear}`,
+                    data: targetAmount > 0 ? years.map(y => (y === targetYear ? targetAmount : null)) : [],
+                    borderColor: CHART_COLORS[7],
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    pointRadius: 6,
+                    pointStyle: 'rectRot',
+                    borderWidth: 2,
+                    borderDash: [6, 4],
+                },
+            ],
+        },
+        options: {
+            ...getCommonChartOptions('Amount ($)'),
+            scales: {
+                ...getCommonChartOptions('Amount ($)').scales,
+                y: {
+                    ...getCommonChartOptions('Amount ($)').scales.y,
+                    suggestedMax: maxYearValue * 1.05,
+                },
+            },
+        },
+    });
+
+    if (summaryEl) {
+        const targetLabel = formatCurrency(targetAmount);
+        const projectedLabel = formatCurrency(projectedAtTarget);
+        if (targetAmount > 0) {
+            if (projectedAtTarget >= targetAmount) {
+                summaryEl.textContent = `Projected ${projectedLabel} by ${targetYear} vs ${targetLabel} target` +
+                    (metYear ? ` — met in ${metYear}` : '');
+            } else {
+                summaryEl.textContent = `Projected ${projectedLabel} by ${targetYear} vs ${targetLabel} target — short by ${formatCurrency(targetAmount - projectedAtTarget)}`;
+            }
+        } else {
+            summaryEl.textContent = `Projected retirement assets: ${projectedLabel} by ${targetYear} (set a target to check attainment)`;
+        }
+    }
+}
+
 function renderAccountBalancesChart() {
     const ctx = document.getElementById('accountBalancesChart').getContext('2d');
     destroyChart('accountBalances');
@@ -1765,6 +1925,8 @@ function renderAllCharts() {
     renderDebtChart();
     renderTaxChart();
     renderAccountBalancesChart();
+    renderContributionsChart();
+    renderRetirementGoalChart();
 }
 
 // ============================================================================
@@ -1781,6 +1943,17 @@ function renderSummaryCards() {
     document.getElementById('peakNetWorth').textContent = formatCurrency(summary.peak_net_worth);
     document.getElementById('netCashFlow').textContent = formatCurrency(summary.total_cash_flow);
     document.getElementById('totalTax').textContent = formatCurrency(summary.total_tax);
+
+    const retEl = document.getElementById('retirementContributions');
+    const retSubEl = document.getElementById('retirementContributionsSub');
+    if (retEl) {
+        retEl.textContent = formatCurrency(summary.avg_annual_retirement_contributions ?? 0);
+        if (retSubEl) {
+            retSubEl.textContent = typeof summary.retirement_contribution_pct_of_income === 'number'
+                ? `avg/yr · ${summary.retirement_contribution_pct_of_income.toFixed(1)}% of income`
+                : 'avg/yr';
+        }
+    }
 }
 
 // ============================================================================
@@ -1917,6 +2090,18 @@ function setupEventListeners() {
     document.getElementById('netWorthChartType').addEventListener('change', renderNetWorthChart);
     document.getElementById('cashFlowChartType').addEventListener('change', renderCashFlowChart);
     document.getElementById('tagChartYear').addEventListener('change', renderTagSpendingChart);
+
+    // Retirement target inputs - re-render the goal card in place
+    const targetAmountEl = document.getElementById('retirementTargetAmount');
+    const targetYearEl = document.getElementById('retirementTargetYear');
+    if (targetAmountEl) targetAmountEl.addEventListener('input', debounce(renderRetirementGoalChart, 300));
+    if (targetYearEl) {
+        targetYearEl.dataset.userTouched = 'false';
+        targetYearEl.addEventListener('input', () => {
+            targetYearEl.dataset.userTouched = 'true';
+            debounce(renderRetirementGoalChart, 300)();
+        });
+    }
 
     // Export
     document.getElementById('exportCsvBtn').addEventListener('click', () => {

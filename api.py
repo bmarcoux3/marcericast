@@ -298,6 +298,21 @@ def dataframe_to_response(df: pd.DataFrame) -> Dict[str, Any]:
     if "Net Cash Flow" in df.columns:
         summary["total_cash_flow"] = float(df["Net Cash Flow"].sum())
 
+    # Retirement contribution stats (Retirement Contribution Transfers is negative)
+    if "Retirement Contribution Transfers" in df.columns:
+        total_ret = float(-df["Retirement Contribution Transfers"].sum())
+        summary["total_retirement_contributions"] = total_ret
+        if len(df) > 0:
+            summary["avg_annual_retirement_contributions"] = total_ret / len(df)
+    if "Retirement Assets" in df.columns:
+        summary["final_retirement_assets"] = float(df["Retirement Assets"].iloc[-1])
+    if "Retirement Contribution Transfers" in df.columns and "Gross Taxable Income" in df.columns:
+        total_income = float(df["Gross Taxable Income"].sum())
+        if total_income > 0:
+            summary["retirement_contribution_pct_of_income"] = (
+                float(-df["Retirement Contribution Transfers"].sum()) / total_income * 100.0
+            )
+
     return {
         "data": records,
         "columns": columns,
@@ -612,6 +627,36 @@ def get_tunable_parameters(config: ScenarioConfig, variables: Dict[str, Any] = N
                     step=None,
                     tags=event_tags,
                     category="Income" if is_income else None,
+                ))
+
+        # Surplus-gated ("waterfall") contribution flags - exposed only when the
+        # scenario opted in (explicitly set on the contribution event).
+        if hasattr(event, "surplus_only") and "surplus_only" in event.model_fields_set:
+            parameters.append(ParameterInfo(
+                path=f"events.{event.id}.surplus_only",
+                current_value=event.surplus_only,
+                default_value=event.surplus_only,
+                description=f"Only contribute for {event.name} in years with excess cash flow",
+                parameter_type="bool",
+                min_value=0,
+                max_value=1,
+                step=1,
+                tags=event_tags,
+                category="life_decisions",
+                control="toggle",
+            ))
+            if "surplus_priority" in event.model_fields_set:
+                parameters.append(ParameterInfo(
+                    path=f"events.{event.id}.surplus_priority",
+                    current_value=event.surplus_priority,
+                    default_value=event.surplus_priority,
+                    description=f"Surplus funding priority for {event.name} (lower = funded first)",
+                    parameter_type="int",
+                    min_value=0,
+                    max_value=100,
+                    step=1,
+                    tags=event_tags,
+                    category="life_decisions",
                 ))
 
         # Asset purchase specific parameters

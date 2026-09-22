@@ -160,6 +160,15 @@ class CashStreamEventConfig(BaseEventConfig):
     is_pre_tax_deduction: bool = False
     target_account_id: Optional[str] = None
     step_adjustments: Dict[int, float] = Field(default_factory=dict)
+    # Surplus-gated ("waterfall") contributions: when enabled on a contribution
+    # stream (category expense + target_account_id), the contribution is NOT an
+    # unconditional obligation. It only fires in years where the plan has true
+    # excess cash flow (surplus after taxes and consumption), capped at the
+    # stream's annual amount, funded in priority order (surplus_priority, lower
+    # first). In deficit years the contribution is zero. Default off preserves
+    # the legacy always-contribute behavior.
+    surplus_only: bool = False
+    surplus_priority: int = 0
 
 
 class MortgageConfig(BaseModel):

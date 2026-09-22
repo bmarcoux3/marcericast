@@ -21,6 +21,13 @@ class EventImpact:
     cash_inflow: float = 0.0  # Actual cash received (excludes capital gains)
     pre_tax_deductions: float = 0.0
     post_tax_expenses: float = 0.0
+    contribution_transfers: float = 0.0
+    # Pre-tax portion of contribution_transfers that also reduces taxable income.
+    pre_tax_contribution: float = 0.0
+    # Proposed contribution amount for a surplus-gated ("waterfall") stream. The
+    # engine decides whether the year's surplus can fund it (and by how much);
+    # until then nothing is credited to the account.
+    surplus_contribution: float = 0.0
     # Capital gains from asset liquidation. Kept separate from gross_taxable_income
     # so the engine can apply capital-gains bracket rates instead of ordinary rates.
     # gross_taxable_income still includes the gain for reporting (AGI/Gross Taxable
@@ -97,23 +104,32 @@ class CashStreamEvent(BaseEvent):
             else:
                 impact.non_taxable_income += amount
             impact.cash_inflow += amount
+        elif (
+            self.config.category == "expense"
+            and self.config.target_account_id
+            and self.config.target_account_id in state.accounts
+        ):
+            if self.config.surplus_only:
+                # Surplus-gated stream: propose the amount as a funding cap.
+                # Nothing is credited here; the engine funds it (up to this cap)
+                # only if the year produces excess cash flow, in priority order.
+                impact.surplus_contribution += amount
+                return impact
+            # Contribution = transfer INTO an account (401k, Roth IRA, 529, HSA...),
+            # not consumption spending. It is excluded from Net Cash Flow / expenses
+            # and reported as an investment/savings transfer. The amount is still
+            # funded out of the year's operating cash downstream (surplus first,
+            # deficit drawdown otherwise), keeping the balance sheet unchanged.
+            impact.contribution_transfers += amount
+            if self.config.is_pre_tax_deduction:
+                # Pre-tax contributions still reduce taxable income (AGI) for taxes.
+                impact.pre_tax_contribution += amount
+            state.accounts[self.config.target_account_id].balance += amount
         elif self.config.category == "expense":
             if self.config.is_pre_tax_deduction:
                 impact.pre_tax_deductions += amount
             else:
                 impact.post_tax_expenses += amount
-
-        # Target account payroll transfers (e.g. 401k pre-tax contributions).
-        # Only expense cash streams may credit a target account directly: for an
-        # income event the amount already reaches accounts via the waterfall
-        # (Net Cash Flow -> surplus allocation), so crediting the target here too
-        # would create money from nothing.
-        if (
-            self.config.category == "expense"
-            and self.config.target_account_id
-            and self.config.target_account_id in state.accounts
-        ):
-            state.accounts[self.config.target_account_id].balance += amount
 
         return impact
 

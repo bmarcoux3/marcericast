@@ -59,12 +59,21 @@ def test_trace_2026_cash_reserve_floor(generic_df):
     assert row["Account: Pre-Tax Retirement (401k)"] == pytest.approx(73500.0)   # 50,000*1.07 + 20,000
     assert row["Account: Roth IRA"] == pytest.approx(15700.0)                    # 10,000*1.07 + 5,000
     assert row["Account: College 529"] == pytest.approx(12000.0)                 # 0 + 12,000
+    # Per-stream contribution info columns (savings transfers, not expenses)
+    assert row["Contribution: Pre-Tax 401k Contributions"] == pytest.approx(-20000.0)
+    assert row["Contribution: Roth IRA Contributions"] == pytest.approx(-5000.0)
+    assert row["Contribution: College 529 Contributions"] == pytest.approx(-12000.0)
+    # Retirement-only aggregates: transfers into 401k/Roth + that sum of their balances
+    assert row["Retirement Contribution Transfers"] == pytest.approx(-25000.0)
+    assert row["Retirement Assets"] == pytest.approx(89200.0)  # 73,500 + 15,700
 
 
 def test_trace_2026_net_worth(generic_df):
     """Net worth decomposition on the 2026 row."""
     row = generic_df.loc[2026]
-    assert row["Net Cash Flow"] == pytest.approx(-136242.10478606872)
+    # Net Cash Flow excludes the 37,000 of retirement/529 contributions (savings
+    # transfers, not consumption): pre-tax -136,242.10 + 20,000 + 5,000 + 12,000.
+    assert row["Net Cash Flow"] == pytest.approx(-99242.10478606872)
     assert row["Total Assets"] == pytest.approx(622957.8952139313)
     assert row["Total Liabilities"] == pytest.approx(345947.8952139313)
     # 622,957.90 - 345,947.90 = 277,010.00

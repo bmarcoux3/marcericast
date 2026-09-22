@@ -328,6 +328,19 @@ class TestDataQuality:
         assert "total_income" in summary
         assert "total_tax" in summary
         assert "total_cash_flow" in summary
+        assert "total_retirement_contributions" in summary
+        assert "avg_annual_retirement_contributions" in summary
+        assert "retirement_contribution_pct_of_income" in summary
+        assert "final_retirement_assets" in summary
+
+    def test_retirement_contribution_columns_exist(self):
+        """Test that contribution stream and retirement aggregate columns exist."""
+        response = client.get("/api/scenarios/generic-family/run")
+        data = response.json()
+        columns = data["columns"]
+        assert any(c.startswith("Contribution: ") for c in columns)
+        assert "Retirement Contribution Transfers" in columns
+        assert "Retirement Assets" in columns
 
 
 if __name__ == "__main__":

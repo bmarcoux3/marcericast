@@ -185,7 +185,16 @@ class SimulationRunner:
             total_capital_gains = 0.0
             pre_tax_deductions = 0.0
             total_cash_inflow = 0.0  # Track actual cash received (excludes capital gains)
+            total_contributions = 0.0  # 401k/Roth/529 transfers into accounts (not consumption)
+            total_pre_tax_contributions = 0.0  # pre-tax portion of contributions (AGI-reducing)
+            non_contribution_pre_tax = 0.0  # AGI deductions that are also cash outflows
+            total_retirement_contributions = 0.0  # contributions into retirement accounts only
+            contribution_records: Dict[str, float] = {}  # per-stream transfer info columns
             event_flow_records: Dict[str, float] = {}
+            # Surplus-gated ("waterfall") contribution streams. Each entry is a
+            # funding proposal: the amount only becomes real if the year's surplus
+            # can cover it, funded in priority order (see step 4 below).
+            gated_proposals: List[Dict[str, Any]] = []
             # Track fee breakdowns for detailed columns
             purchase_fee_columns: Dict[str, float] = {}
             sale_fee_columns: Dict[str, float] = {}
@@ -198,11 +207,36 @@ class SimulationRunner:
                 pre_tax_deductions += impact.pre_tax_deductions
                 post_tax_expenses += impact.post_tax_expenses
                 total_cash_inflow += impact.cash_inflow
+                total_contributions += impact.contribution_transfers
+                total_pre_tax_contributions += impact.pre_tax_contribution
+                if impact.contribution_transfers:
+                    target_id = getattr(event.config, "target_account_id", None)
+                    target_acc = state.accounts.get(target_id) if target_id else None
+                    if target_acc and target_acc.account_type in ("traditional_401k", "roth_ira"):
+                        total_retirement_contributions += impact.contribution_transfers
+                    contribution_records[f"Contribution: {event.config.name}"] = -impact.contribution_transfers
+                if impact.contribution_transfers == 0:
+                    non_contribution_pre_tax += impact.pre_tax_deductions
+
+                # Collect surplus-gated streams: unused here, funded in step 4.
+                if impact.surplus_contribution > 0:
+                    cfg = event.config
+                    target_acc = state.accounts.get(cfg.target_account_id) if cfg.target_account_id else None
+                    gated_proposals.append({
+                        "name": cfg.name,
+                        "account_id": cfg.target_account_id,
+                        "is_retirement": bool(target_acc and target_acc.account_type in ("traditional_401k", "roth_ira")),
+                        "is_pretax": bool(getattr(cfg, "is_pre_tax_deduction", False)),
+                        "priority": int(getattr(cfg, "surplus_priority", 0)),
+                        "tags": list(getattr(cfg, "tags", []) or []),
+                        "proposal": impact.surplus_contribution,
+                        "event_index": len(gated_proposals),
+                    })
 
                 # Net cash flow contribution for individual event column
                 # Income positive, Expense negative
                 # Only record event column when the event actually has an impact (trigger year)
-                if impact.net_cash_flow != 0 or impact.cash_inflow != 0 or impact.post_tax_expenses != 0 or impact.pre_tax_deductions != 0 or impact.gross_taxable_income != 0 or impact.non_taxable_income != 0:
+                if impact.net_cash_flow != 0 or impact.cash_inflow != 0 or impact.post_tax_expenses != 0 or impact.gross_taxable_income != 0 or impact.non_taxable_income != 0:
                     event_key = f"Event: {event.config.name}"
 
                     # For asset purchase: show only down payment in main column
@@ -227,9 +261,11 @@ class SimulationRunner:
                     sale_fee_columns[column_name] = -amount  # Negative for expense
 
                 # Track spending by tag
-                # For income events, track as positive; for expense events, track as negative
+                # For income events, track as positive; for expense events, track as negative.
+                # Contribution transfers (401k/Roth/529) are counted toward their tags
+                # ("where did the money go") even though they are not consumption expenses.
                 event_income = impact.gross_taxable_income + impact.non_taxable_income
-                event_expense = impact.post_tax_expenses + impact.pre_tax_deductions
+                event_expense = impact.post_tax_expenses + impact.pre_tax_deductions + impact.contribution_transfers
 
                 # Determine if this is an income or expense event
                 # CashStreamEvent has category "income" or "expense"
@@ -300,44 +336,121 @@ class SimulationRunner:
                     lifestyle_spend += annual_payment
 
             # 4. Determine AGI & Inflated Standard Deduction / Taxable Income
-            agi = max(0.0, gross_taxable_income - pre_tax_deductions)
-            std_deduction = self.tax_calculator.get_inflated_standard_deduction(current_year=year, macro=self.config.macroeconomics)
-            taxable_income = max(0.0, agi - std_deduction)
-            # Capital gains are taxed at capital-gains bracket rates; ordinary income
-            # (AGI excluding gains) is taxed at ordinary rates. gross_taxable_income
-            # still includes gains for the reporting columns, so split them out here.
-            ordinary_income = max(0.0, agi - total_capital_gains)
-            ordinary_tax = self.tax_calculator.calculate_income_tax(ordinary_income, current_year=year, macro=self.config.macroeconomics)
-            cap_gains_tax = self.tax_calculator.calculate_cap_gains_tax(total_capital_gains, current_year=year, macro=self.config.macroeconomics)
-            federal_tax = ordinary_tax + cap_gains_tax
+            # pre_tax_deductions = deductions that are REAL cash outflows (non-contribution);
+            # total_pre_tax_contributions = pre-tax 401k-style contributions that reduce
+            # taxable income but are transfers, not expenses. Both reduce AGI.
+            #
+            # Surplus-gated ("waterfall") contributions are funded out of this year's
+            # excess cash flow only (never by liquidating savings). Pre-tax contributions
+            # reduce AGI -> reduce tax -> enlarge surplus, so resolve a small fixed-point
+            # (allocations are monotone and capped, so a few passes converge).
+            if gated_proposals:
+                proposed_order = sorted(
+                    range(len(gated_proposals)),
+                    key=lambda i: (gated_proposals[i]["priority"], gated_proposals[i]["event_index"]),
+                )
+                uncovered_principal = state.debts.get(UNCOVERED_DEFICIT_ID).principal if UNCOVERED_DEFICIT_ID in state.debts else 0.0
+                gated_alloc = [0.0] * len(gated_proposals)
+                gated_pretax = 0.0
+                for _ in range(6):
+                    agi = max(0.0, gross_taxable_income - pre_tax_deductions - total_pre_tax_contributions - gated_pretax)
+                    std_deduction = self.tax_calculator.get_inflated_standard_deduction(current_year=year, macro=self.config.macroeconomics)
+                    taxable_income = max(0.0, agi - std_deduction)
+                    # Capital gains are taxed at capital-gains bracket rates; ordinary income
+                    # (AGI excluding gains) is taxed at ordinary rates. gross_taxable_income
+                    # still includes gains for the reporting columns, so split them out here.
+                    ordinary_income = max(0.0, agi - total_capital_gains)
+                    ordinary_tax = self.tax_calculator.calculate_income_tax(ordinary_income, current_year=year, macro=self.config.macroeconomics)
+                    cap_gains_tax = self.tax_calculator.calculate_cap_gains_tax(total_capital_gains, current_year=year, macro=self.config.macroeconomics)
+                    federal_tax = ordinary_tax + cap_gains_tax
 
-            # total_cash_inflow already includes non-taxable income (CashStreamEvent
-            # credits cash_inflow for both taxable and non-taxable income), so adding
-            # non_taxable_income again would double-count it.
-            total_inflows = total_cash_inflow
-            total_outflows = post_tax_expenses + pre_tax_deductions
-            net_operating_cash_flow = total_inflows - total_outflows - federal_tax
+                    # total_cash_inflow already includes non-taxable income (CashStreamEvent
+                    # credits cash_inflow for both taxable and non-taxable income), so adding
+                    # non_taxable_income again would double-count it.
+                    total_inflows = total_cash_inflow
+                    total_outflows = post_tax_expenses + non_contribution_pre_tax
+                    net_operating_cash_flow = total_inflows - total_outflows - federal_tax
+
+                    # Surplus available for gated funding = operating cash flow after the
+                    # unconditional contributions, with revolving deficit debt paid down
+                    # before any investing.
+                    surplus_for_gated = max(0.0, net_operating_cash_flow - total_contributions)
+                    if uncovered_principal > 0:
+                        surplus_for_gated = max(0.0, surplus_for_gated - min(surplus_for_gated, uncovered_principal))
+
+                    new_alloc = [0.0] * len(gated_proposals)
+                    remaining = surplus_for_gated
+                    for i in proposed_order:
+                        take = min(gated_proposals[i]["proposal"], remaining)
+                        new_alloc[i] = take
+                        remaining -= take
+                    new_pretax = sum(new_alloc[i] for i, gp in enumerate(gated_proposals) if gp["is_pretax"])
+                    if new_alloc == gated_alloc and new_pretax == gated_pretax:
+                        break
+                    gated_alloc, gated_pretax = new_alloc, new_pretax
+            else:
+                gated_alloc = []
+                gated_pretax = 0.0
+                agi = max(0.0, gross_taxable_income - pre_tax_deductions - total_pre_tax_contributions)
+                std_deduction = self.tax_calculator.get_inflated_standard_deduction(current_year=year, macro=self.config.macroeconomics)
+                taxable_income = max(0.0, agi - std_deduction)
+                ordinary_income = max(0.0, agi - total_capital_gains)
+                ordinary_tax = self.tax_calculator.calculate_income_tax(ordinary_income, current_year=year, macro=self.config.macroeconomics)
+                cap_gains_tax = self.tax_calculator.calculate_cap_gains_tax(total_capital_gains, current_year=year, macro=self.config.macroeconomics)
+                federal_tax = ordinary_tax + cap_gains_tax
+                total_inflows = total_cash_inflow
+                total_outflows = post_tax_expenses + non_contribution_pre_tax
+                net_operating_cash_flow = total_inflows - total_outflows - federal_tax
+
+            # Commit the surplus-funded gated contributions: credit accounts, fold them
+            # into totals and per-stream/tag reporting.
+            for i, gp in enumerate(gated_proposals):
+                amount = gated_alloc[i]
+                if amount <= 0.0:
+                    continue
+                state.accounts[gp["account_id"]].balance += amount
+                total_contributions += amount
+                if gp["is_pretax"]:
+                    total_pre_tax_contributions += amount
+                if gp["is_retirement"]:
+                    total_retirement_contributions += amount
+                contribution_records[f"Contribution: {gp['name']}"] = -amount
+                for tag in gp["tags"]:
+                    tag_spending[tag] -= amount
+
+            # Investment/savings transfers (401k, Roth IRA, 529) are movements INTO
+            # accounts, not consumption, so they are excluded from Net Cash Flow.
+            # They still consume the year's cash: contributions are funded out of
+            # surplus first; any shortfall left after funding them (cash_available
+            # < 0) is resolved through the waterfall exactly as before. This keeps
+            # the balance sheet identical while making Net Cash Flow reflect true
+            # operating cash flow (income - consumption - taxes) instead of counting
+            # savings twice (once as outflow, once when it is drawn back down).
+            cash_available = net_operating_cash_flow - total_contributions
 
             # 5. Resolve Cash Flow Delta via Waterfall Strategy
-            surplus_to_allocate = net_operating_cash_flow
-            if net_operating_cash_flow > 0:
+            surplus_to_allocate = cash_available
+            deficit_drawdown = 0.0
+            if cash_available > 0:
                 # Pay down revolving deficit debt before investing any surplus.
                 # The paydown is a balance-sheet move (reduces a liability), so the
                 # Net Cash Flow column still reports operating cash flow unchanged.
                 uncovered = state.debts.get(UNCOVERED_DEFICIT_ID)
                 if uncovered and uncovered.principal > 0:
-                    repayment = min(net_operating_cash_flow, uncovered.principal)
+                    repayment = min(cash_available, uncovered.principal)
                     uncovered.principal -= repayment
-                    surplus_to_allocate = net_operating_cash_flow - repayment
+                    surplus_to_allocate = cash_available - repayment
                     if uncovered.principal <= 0.0:
                         del state.debts[UNCOVERED_DEFICIT_ID]
                 self.waterfall_resolver.resolve_surplus(surplus_to_allocate, state.accounts)
-            elif net_operating_cash_flow < 0:
+            elif cash_available < 0:
                 # Pass absolute value of deficit (resolve_deficit expects positive amount)
                 # Track any remaining uncovered deficit as new debt
+                deficit_to_resolve = abs(cash_available)
                 remaining_deficit = self.waterfall_resolver.resolve_deficit(
-                    abs(net_operating_cash_flow), state.accounts
+                    deficit_to_resolve, state.accounts
                 )
+                deficit_drawdown = deficit_to_resolve - remaining_deficit
                 if remaining_deficit > 0:
                     self._add_uncovered_deficit_as_debt(remaining_deficit, state, year)
 
@@ -363,13 +476,22 @@ class SimulationRunner:
             # LEFT SIDE: Non-cashflow items (balances, values, metrics for reference)
             # 1. Summary Metrics (leftmost - for quick reference)
             period_data["Gross Taxable Income"] = gross_taxable_income
-            period_data["Pre-tax Deductions"] = pre_tax_deductions
+            period_data["Pre-tax Deductions"] = pre_tax_deductions + total_pre_tax_contributions
             period_data["AGI"] = agi
             period_data["Net Cash Flow"] = net_operating_cash_flow
+            period_data["Investment Contribution Transfers"] = -total_contributions
+            period_data["Retirement Contribution Transfers"] = -total_retirement_contributions
+            period_data["Deficit Drawdowns"] = deficit_drawdown
 
             # 2. Account Balances
             for acc in state.accounts.values():
                 period_data[f"Account: {acc.name}"] = acc.balance
+
+            # Retirement assets = balance held in retirement accounts (401k + Roth)
+            retirement_account_ids = {acc.id for acc in state.accounts.values()
+                                      if acc.account_type in ("traditional_401k", "roth_ira")}
+            retirement_assets = sum(acc.balance for acc in state.accounts.values() if acc.id in retirement_account_ids)
+            period_data["Retirement Assets"] = retirement_assets
 
             # 3. Asset Values (grouped with other balances on left)
             for asset in state.assets.values():
@@ -415,11 +537,16 @@ class SimulationRunner:
             # Track federal tax in Taxes tag
             tag_spending["Taxes"] -= federal_tax
 
-            # 7f. Tag Aggregate Columns (sum of spending by tag, negative for expenses)
+            # 7f. Contribution stream info columns (transfers INTO accounts; shown
+            # for visibility, excluded from Net Cash Flow and spending totals).
+            for c_key, c_val in contribution_records.items():
+                period_data[c_key] = c_val
+
+            # 7g. Tag Aggregate Columns (sum of spending by tag, negative for expenses)
             for tag in all_tags:
                 period_data[f"Tag: {tag}"] = tag_spending[tag]
 
-            # 7g. General Lifestyle Spend (all expenses except Investments and Taxes)
+            # 7h. General Lifestyle Spend (all expenses except Investments and Taxes)
             period_data["General Lifestyle Spend"] = -lifestyle_spend  # Negative for expense
 
             records.append(period_data)
@@ -442,7 +569,9 @@ class SimulationRunner:
             # LEFT: Summary metrics, Account balances, Totals, Net Worth, Tax details
             if col.startswith(("Account: ", "Total ", "Net Worth", "Liquid ",
                               "Gross Taxable", "Pre-tax", "AGI", "Net Cash Flow",
-                              "Tax: Standard", "Tax: Taxable")):
+                              "Investment Contribution", "Deficit Drawdowns",
+                              "Tax: Standard", "Tax: Taxable")) or col in (
+                    "Retirement Assets", "Retirement Contribution Transfers"):
                 left_cols.append(col)
             # ASSETS: All asset values grouped together
             elif col.startswith("Asset: "):

@@ -178,6 +178,21 @@
                             <span class="summary-value" id="totalTax">$0</span>
                         </div>
                     </div>
+                    <div class="summary-card">
+                        <div class="summary-icon retirement">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                        </div>
+                        <div class="summary-info">
+                            <span class="summary-label">Retirement Contributions</span>
+                            <span class="summary-value" id="retirementContributions">$0</span>
+                            <span class="summary-subvalue" id="retirementContributionsSub"></span>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Charts -->
@@ -307,8 +322,35 @@
                     </div>
                 </div>
 
-                <!-- Data Table -->
-                <div class="table-card" id="tableCard" style="display: none;">
+<!-- Retirement & Savings Contributions -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Retirement &amp; Savings Contributions</h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="contributionsChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Retirement Goal -->
+                    <div class="chart-card large">
+                        <div class="chart-header">
+                            <h3>Retirement Goal</h3>
+                            <div class="chart-controls">
+                                <span class="goal-control-label">Target nest egg ($)</span>
+                                <input type="number" id="retirementTargetAmount" class="goal-control-input" value="3000000" min="0" step="50000" aria-label="Target retirement nest egg amount">
+                                <span class="goal-control-label">by year</span>
+                                <input type="number" id="retirementTargetYear" class="goal-control-input" value="2060" min="2026" step="1" aria-label="Target retirement year">
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="retirementGoalChart"></canvas>
+                        </div>
+                        <div class="goal-summary" id="retirementGoalSummary"></div>
+                    </div>
+
+                    <!-- Data Table -->
+                    <div class="table-card" id="tableCard" style="display: none;">
                     <div class="table-header">
                         <h3>Data Table</h3>
                         <div class="table-controls">

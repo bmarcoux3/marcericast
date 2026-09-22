@@ -27,6 +27,11 @@ GENERIC_SCENARIO_PATH = Path(__file__).parent / "fixtures" / "scenarios" / "gene
 
 # Columns that represent balance-sheet or derived quantities (excluded from the
 # cash-flow reconciliation because they are aggregates, not cash movements).
+# "Investment Contribution Transfers", "Retirement Contribution Transfers",
+# "Retirement Assets", and "Deficit Drawdowns" are balance-sheet moves between
+# accounts (savings transfers and deficit funding), so they are also excluded:
+# they reconcile through the balance sheet, not cash flow. Per-stream
+# "Contribution: " info columns are the same transfers, so they are excluded too.
 _AGGREGATE_PREFIXES = (
     "Account: ",
     "Total ",
@@ -36,6 +41,11 @@ _AGGREGATE_PREFIXES = (
     "Pre-tax",
     "AGI",
     "Net Cash Flow",
+    "Investment Contribution Transfers",
+    "Retirement Contribution Transfers",
+    "Retirement Assets",
+    "Contribution: ",
+    "Deficit Drawdowns",
     "Tax: Standard",
     "Tax: Taxable",
     "Asset: ",
@@ -237,6 +247,79 @@ events:
         assert row["Net Cash Flow"] == pytest.approx(100000.0)
         assert row["Account: Checking"] == pytest.approx(checking)
         assert row["Account: Brokerage"] == pytest.approx(brokerage)
+
+
+def test_contributions_excluded_from_net_cash_flow():
+    """Savings transfers (401k/Roth/529 contributions) are NOT consumption: they
+    are excluded from Net Cash Flow and reported as Investment Contribution
+    Transfers, while still funding the target account and reconciling."""
+    raw_yaml = """
+version: "1.0"
+meta:
+  scenario_name: "Contribution Reconciliation"
+  start_year: 2026
+  end_year: 2026
+  tax_status: "MFJ"
+macroeconomics:
+  general_inflation_rate: 0.0
+tax_rules:
+  federal:
+    standard_deduction: 0
+    brackets:
+      - limit: .inf
+        rate: 0.0
+accounts:
+  - id: "retirement"
+    name: "401k"
+    type: "traditional_401k"
+    balance: 0.0
+  - id: "checking"
+    name: "Checking"
+    type: "liquid"
+    balance: 0.0
+waterfall_strategy:
+  surplus_allocation:
+    - account_id: "checking"
+  deficit_drawdown_order:
+    - account_id: "checking"
+events:
+  - id: "inc"
+    name: "Income"
+    type: "cash_stream"
+    category: "income"
+    start_year: 2026
+    end_year: 2026
+    base_amount: 100000.0
+    is_taxable_income: true
+  - id: "contrib"
+    name: "Pre-Tax 401k"
+    type: "cash_stream"
+    category: "expense"
+    start_year: 2026
+    end_year: 2026
+    base_amount: 30000.0
+    target_account_id: "retirement"
+    is_pre_tax_deduction: true
+    tags: ["Investments"]
+"""
+    config = load_scenario_from_yaml(yaml.safe_load(raw_yaml))
+    df = SimulationRunner(config).run()
+    row = df.loc[2026]
+    cash_columns = _cash_flow_columns(df.columns)
+    _assert_cash_flow_reconciliation(row, cash_columns)
+    _assert_balance_sheet(row)
+    # Operating cash flow = income 100k - no consumption = 100k (contribution excluded)
+    assert row["Net Cash Flow"] == pytest.approx(100000.0)
+    assert row["Investment Contribution Transfers"] == pytest.approx(-30000.0)
+    assert row["Retirement Contribution Transfers"] == pytest.approx(-30000.0)
+    assert row["Contribution: Pre-Tax 401k"] == pytest.approx(-30000.0)
+    assert row["Retirement Assets"] == pytest.approx(30000.0)
+    # Contribution funded out of surplus: 401k gets the 30k, the remaining 70k surplus
+    # allocates to checking.
+    assert row["Account: 401k"] == pytest.approx(30000.0)
+    assert row["Account: Checking"] == pytest.approx(70000.0)
+    assert row["Pre-tax Deductions"] == pytest.approx(30000.0)
+    assert row["AGI"] == pytest.approx(70000.0)
 
 
 def test_uncovered_deficit_reconciles_on_balance_sheet():
